@@ -44,7 +44,8 @@ const SRC = opt("src");
 const INSPECT = has("inspect");
 const SKIP_ELE = has("skip-elevation");
 const SIMPLIFY_TOL = +(opt("simplify", "0.00008")); // ≈ 8 m
-const MAX_PARTS = +(opt("max-parts", "6"));
+const MAX_PARTS = +(opt("max-parts", "8"));
+const MIN_LEN = +(opt("min-length", "8000"));
 const ELE_DATASET = opt("ele-dataset", "eudem25m");
 
 if (!SRC) {
@@ -116,36 +117,49 @@ if (!REF_FIELD) {
 const TF_VALUES = (opt("traffic-free-values", "traffic free,traffic-free,off road,off-road,path,greenway,towpath,railway path,segregated"))
   .split(",").map((s) => s.trim().toLowerCase());
 
-// Surface field: try common names first, then detect BY VALUES — scan every
-// string field for one whose distinct values look like surface classes
-// ("Traffic Free" / "On Road" etc). Robust to portal renames like `Desc_`.
+// Surface classification. Values like "Traffic Free", "On Road - Minor",
+// "Segregated cycle track", "Towpath" etc. — matched per value, any field.
+const TF_RE = /traffic.?free|off.?road|path|track|greenway|towpath|bridleway|shared.?use|canal|railway|promenade|segregated|trail|cycle.?way/i;
+const ROAD_RE = /on.?road|road|street|lane|carriageway|highway|quiet.?way|minor|major|a.?road|b.?road/i;
+const classifyValue = (v) => (TF_RE.test(v) ? 1 : ROAD_RE.test(v) ? 0 : null);
+
 function detectSurfaceField() {
   const forced = opt("surface-field");
   if (forced) return forced;
   const keys = Object.keys(features[0].properties ?? {});
-  const named = ["Desc", "Desc_", "DESC_", "Type", "Surface", "OnRoad", "On_Road", "RoadType", "Category"]
-    .map((c) => keys.find((k) => k.toLowerCase() === c.toLowerCase()))
-    .find(Boolean);
-  const looksSurfacey = (field) => {
-    const vals = distinct(field, 8).map(([v]) => v.toLowerCase());
-    if (!vals.length || vals.length > 8) return false;
-    const hasTf = vals.some((v) => /traffic|off.?road|path|greenway|towpath/.test(v));
-    const hasRoad = vals.some((v) => /on.?road|road|carriageway|street/.test(v));
-    return hasTf && hasRoad;
-  };
-  if (named && looksSurfacey(named)) return named;
-  for (const k of keys) if (looksSurfacey(k)) return k;
-  return named ?? null;
+  let best = null;
+  for (const k of keys) {
+    const vals = distinct(k, 60);
+    if (!vals.length) continue;
+    let total = 0, classified = 0, tf = 0, road = 0;
+    for (const [v, n] of vals) {
+      total += n;
+      const c = classifyValue(v);
+      if (c != null) { classified += n; if (c === 1) tf += n; else road += n; }
+    }
+    if (!tf || !road) continue; // need both classes present
+    const score = classified / total;
+    if (score >= 0.5 && (!best || score > best.score)) best = { field: k, score };
+  }
+  // fall back to conventional names even if value-scoring failed
+  if (!best) {
+    const named = ["Desc", "Desc_", "DESC_", "Type", "Surface", "OnRoad", "On_Road", "RoadType", "Category"]
+      .map((c) => keys.find((k) => k.toLowerCase() === c.toLowerCase()))
+      .find(Boolean);
+    return named ?? null;
+  }
+  return best.field;
 }
 const SURF_FIELD = detectSurfaceField();
-console.log(`Fields → ref: ${REF_FIELD}, name: ${NAME_FIELD ?? "(none)"}, surface: ${SURF_FIELD ?? "(none — everything will show as on-road)"}`);
-if (SURF_FIELD) console.log(`  surface values seen: ${distinct(SURF_FIELD, 8).map(([v, n]) => `"${v}" (${n})`).join(", ")}`);
+console.log(`Fields → ref: ${REF_FIELD}, name: ${NAME_FIELD ?? "(none)"}, surface: ${SURF_FIELD ?? "(NONE — surface data will be marked unavailable; run --inspect and pass --surface-field)"}`);
+if (SURF_FIELD) console.log(`  surface values seen: ${distinct(SURF_FIELD, 12).map(([v, n]) => `"${v}" (${n})`).join(", ")}`);
 
 const isTrafficFree = (props) => {
-  if (!SURF_FIELD) return 1;
-  const v = String(props?.[SURF_FIELD] ?? "").toLowerCase();
-  if (!v) return 1;
-  return TF_VALUES.some((t) => v.includes(t)) ? 1 : 0;
+  if (!SURF_FIELD) return 0; // marked unavailable app-side when everything is 0
+  const v = String(props?.[SURF_FIELD] ?? "");
+  if (!v) return 0;
+  const extra = TF_VALUES.some((t) => v.toLowerCase().includes(t));
+  return (classifyValue(v) ?? (extra ? 1 : 0));
 };
 
 /* ------------------------------ geometry helpers ---------------------------- */
@@ -318,7 +332,7 @@ async function elevations(coords) {
 const byRef = new Map(); // ref → { segs: [], names: Map<string, count> }
 let skipped = 0, linkRoutes = 0;
 const KEEP_LINKS = has("keep-links");
-const JOIN_GAP = +(opt("join-gap", "8000")); // bridge chain gaps up to this (m)
+const JOIN_GAP = +(opt("join-gap", "3000")); // bridge chain gaps up to this (m)
 for (const f of features) {
   const ref = String(f.properties?.[REF_FIELD] ?? "").trim();
   if (!ref) { skipped++; continue; }
@@ -421,7 +435,7 @@ for (const [ref, entry] of [...byRef.entries()].sort((a, b) => a[0].localeCompar
   const chains = mergeChains(
     chainSegments(entry.segs).map((c) => ({ ...c, len: lineLength(c.coords) }))
   )
-    .filter((c) => c.len > 3000) // drop crumbs
+    .filter((c) => c.len > MIN_LEN) // drop crumbs
     .sort((a, b) => b.len - a.len)
     .slice(0, MAX_PARTS);
   chains.forEach((chain, i) => {
@@ -429,9 +443,9 @@ for (const [ref, entry] of [...byRef.entries()].sort((a, b) => a[0].localeCompar
     const start = simple[0], end = simple[simple.length - 1];
     const circular = chain.len > 5000 && haversine(start, end) < 1200;
     const from = nearestPlace(start), to = nearestPlace(end);
-    const span = circular
+    const span = circular || (from && from === to)
       ? (from ? `Around ${from}` : "")
-      : from && to && from !== to ? `${from} → ${to}` : from ?? "";
+      : from && to ? `${from} → ${to}` : from ?? "";
     const via = placesAlong(simple).filter((v) => v !== from && v !== to);
     const base = nameHint || `Route ${ref}`;
     const name = chains.length > 1 ? `${base} · ${span || `part ${i + 1}`}` : base;
@@ -454,7 +468,36 @@ for (const [ref, entry] of [...byRef.entries()].sort((a, b) => a[0].localeCompar
     });
   });
 }
-console.log(`${routes.length} routes from ${byRef.size} numbered refs (join-gap ${JOIN_GAP} m — raise --join-gap to merge parts harder).`);
+// De-duplicate identical display names within a ref by appending a compass
+// direction relative to the group's centroid (e.g. two "Around Peterborough"
+// parts become "· N" and "· S").
+{
+  const byName = new Map();
+  for (const r of routes) {
+    const k = r.name;
+    (byName.get(k) ?? byName.set(k, []).get(k)).push(r);
+  }
+  const octant = (dx, dy) => {
+    const a = (Math.atan2(dy, dx) * 180) / Math.PI; // dx east, dy north
+    const dirs = ["E", "NE", "N", "NW", "W", "SW", "S", "SE"];
+    return dirs[Math.round(((a + 360) % 360) / 45) % 8];
+  };
+  for (const group of byName.values()) {
+    if (group.length < 2) continue;
+    const mids = group.map((r) => {
+      const c = r._coords[Math.floor(r._coords.length / 2)];
+      return { r, x: c[0], y: c[1] };
+    });
+    const cx = mids.reduce((s, m) => s + m.x, 0) / mids.length;
+    const cy = mids.reduce((s, m) => s + m.y, 0) / mids.length;
+    for (const m of mids) {
+      const dir = octant(m.x - cx, m.y - cy);
+      m.r.name = `${m.r.name} · ${dir}`;
+      if (m.r.span) m.r.span = `${m.r.span} (${dir})`;
+    }
+  }
+}
+console.log(`${routes.length} routes from ${byRef.size} numbered refs (join-gap ${JOIN_GAP} m, min ${MIN_LEN / 1000} km — tune with --join-gap / --min-length).`);
 
 for (const r of routes) {
   // sample elevation at ~every 4th vertex to keep API volume sane, then expand
