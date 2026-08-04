@@ -1,0 +1,46 @@
+# Keeps network.data fresh: downloads the official NCN dataset (updated
+# Sundays), processes it, and commits the compact payload the deployed app
+# fetches at runtime. The app's index.html is never touched — upload new app
+# versions by hand whenever you like; data stays current regardless.
+#
+# Run it manually once (Actions tab → Refresh route data → Run workflow) to
+# publish the first live payload. If DATA_URL ever 404s, replace it with the
+# link from the portal's Download → GeoJSON button.
+
+name: Refresh route data
+
+on:
+  schedule:
+    - cron: "0 4 * * 1" # Mondays 04:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  DATA_URL: "https://opendata.arcgis.com/api/v3/datasets/5defd254e78745bfb12d0456abc1bcf1_0/downloads/data?format=geojson&spatialRefId=4326"
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Download latest network
+        run: curl -fsSL "$DATA_URL" -o /tmp/ncn.geojson && ls -la /tmp/ncn.geojson
+
+      - name: Process (real elevations, cached between runs)
+        run: node tools/build-data.mjs --src /tmp/ncn.geojson
+
+      - name: Commit fresh network.data
+        run: |
+          git config user.name "waymark-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add network.data src/data/network.ts tools/.ele-cache.json -f
+          git diff --cached --quiet && echo "No changes." && exit 0
+          git commit -m "Data refresh $(date -u +%F)"
+          git push
