@@ -1,0 +1,27 @@
+{
+  "name": "waymark",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Waymark — UK National Cycle Network explorer. Single-file deployable.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && node tools/report-size.mjs",
+    "build:data": "node tools/build-data.mjs",
+    "build:sample": "node tools/make-sample-data.mjs",
+    "package": "node tools/package-source.mjs"
+  },
+  "dependencies": {
+    "maplibre-gl": "^4.7.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11",
+    "vite-plugin-singlefile": "^2.0.3"
+  }
+}
