@@ -1,0 +1,14 @@
+build-pois starting: node v20.20.2, routes=/tmp/routes-plain.json, out=pois.json
+routes loaded: 360
+file:///home/runner/work/waymark/waymark/tools/build-pois.mjs:127
+    for (const c of r.coords) {
+                      ^
+
+TypeError: r.coords is not iterable
+    at buildGrid (file:///home/runner/work/waymark/waymark/tools/build-pois.mjs:127:23)
+    at file:///home/runner/work/waymark/waymark/tools/build-pois.mjs:158:14
+    at ModuleJob.run (node:internal/modules/esm/module_job:325:25)
+    at async ModuleLoader.import (node:internal/modules/esm/loader:606:24)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)
+
+Node.js v20.20.2
