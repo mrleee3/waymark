@@ -1,0 +1,4 @@
+node_modules/
+dist/
+waymark-source.zip
+*.log

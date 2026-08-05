@@ -9,7 +9,13 @@ import { RouteList } from "./RouteList";
 import { RouteDetail } from "./RouteDetail";
 import { Planner } from "./Planner";
 
-const SNAP: Record<SheetPos, number> = { peek: 0.88, half: 0.45, full: 0.06 };
+const ORDER: SheetPos[] = ["peek", "half", "full"];
+
+/** Sheet snap heights in px, measured from the bottom of the viewport. */
+function snapHeights(): Record<SheetPos, number> {
+  const h = window.innerHeight;
+  return { peek: 136, half: Math.round(h * 0.52), full: Math.round(h * 0.94) };
+}
 
 function useIsDesktop(): boolean {
   const [desktop, setDesktop] = useState(() => window.matchMedia("(min-width: 768px)").matches);
@@ -39,77 +45,120 @@ export function Panel() {
   const sheet = useStore((s) => s.sheet);
   const desktop = useIsDesktop();
 
-  // -------- mobile sheet dragging --------
+  /* -------- mobile sheet: drag from the grab zone only; content scrolls -------- */
   const panelRef = useRef<HTMLDivElement>(null);
-  const drag = useRef<{ startY: number; startT: number } | null>(null);
-  const [dragT, setDragT] = useState<number | null>(null);
+  const zoneRef = useRef<HTMLDivElement>(null);
+  const drag = useRef<{
+    id: number; startY: number; startH: number; fromSheet: SheetPos; dragging: boolean;
+  } | null>(null);
+  const [dragH, setDragH] = useState<number | null>(null);
+  const suppressClick = useRef(false);
 
-  const t = dragT ?? SNAP[sheet];
-
-  function onGrabDown(e: ReactPointerEvent<HTMLDivElement>): void {
+  function onZoneDown(e: ReactPointerEvent<HTMLDivElement>): void {
     if (desktop) return;
-    drag.current = { startY: e.clientY, startT: t };
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    drag.current = {
+      id: e.pointerId,
+      startY: e.clientY,
+      startH: panelRef.current?.getBoundingClientRect().height ?? snapHeights()[sheet],
+      fromSheet: sheet,
+      dragging: false,
+    };
   }
-  function onGrabMove(e: ReactPointerEvent<HTMLDivElement>): void {
-    if (!drag.current) return;
-    const dy = (e.clientY - drag.current.startY) / window.innerHeight;
-    setDragT(Math.min(0.92, Math.max(0.04, drag.current.startT + dy)));
+  function onZoneMove(e: ReactPointerEvent<HTMLDivElement>): void {
+    const d = drag.current;
+    if (!d || e.pointerId !== d.id) return;
+    const dy = e.clientY - d.startY;
+    if (!d.dragging) {
+      if (Math.abs(dy) < 6) return; // let taps through
+      d.dragging = true;
+      zoneRef.current?.setPointerCapture(d.id);
+    }
+    const snaps = snapHeights();
+    setDragH(Math.min(snaps.full, Math.max(96, d.startH - dy)));
+    e.preventDefault();
   }
-  function onGrabUp(): void {
-    if (!drag.current) return;
+  function onZoneUp(): void {
+    const d = drag.current;
     drag.current = null;
-    const cur = dragT ?? SNAP[sheet];
-    setDragT(null);
-    const best = (Object.keys(SNAP) as SheetPos[]).reduce((a, b) =>
-      Math.abs(SNAP[a] - cur) < Math.abs(SNAP[b] - cur) ? a : b
-    );
-    actions.setSheet(best);
+    if (!d?.dragging) return;
+    suppressClick.current = true;
+    const h = dragH ?? snapHeights()[d.fromSheet];
+    setDragH(null);
+    const snaps = snapHeights();
+    const moved = h - d.startH;
+    let next: SheetPos;
+    if (Math.abs(moved) > 48) {
+      // a definite flick: step one level in the direction of travel
+      const i = ORDER.indexOf(d.fromSheet);
+      next = ORDER[Math.min(ORDER.length - 1, Math.max(0, i + (moved > 0 ? 1 : -1)))];
+    } else {
+      next = ORDER.reduce((a, b) => (Math.abs(snaps[a] - h) < Math.abs(snaps[b] - h) ? a : b));
+    }
+    actions.setSheet(next);
   }
 
-  const style = desktop ? undefined : { transform: `translateY(${(t * 100).toFixed(2)}%)` };
+  const style = desktop ? undefined : dragH != null ? { height: `${dragH}px` } : undefined;
 
   return (
     <div
       ref={panelRef}
-      className={`panel ${desktop ? "panel--rail" : "panel--sheet"} ${dragT != null ? "is-dragging" : ""}`}
+      className={`panel ${desktop ? "panel--rail" : `panel--sheet is-${sheet}`} ${dragH != null ? "is-dragging" : ""}`}
       style={style}
+      onClickCapture={(e) => {
+        if (suppressClick.current) {
+          suppressClick.current = false;
+          e.stopPropagation();
+          e.preventDefault();
+        }
+      }}
     >
       <div
-        className="panel__grab"
-        onPointerDown={onGrabDown}
-        onPointerMove={onGrabMove}
-        onPointerUp={onGrabUp}
-        onPointerCancel={onGrabUp}
-        aria-hidden={desktop}
+        ref={zoneRef}
+        className="panel__dragzone"
+        onPointerDown={onZoneDown}
+        onPointerMove={onZoneMove}
+        onPointerUp={onZoneUp}
+        onPointerCancel={onZoneUp}
       >
-        <span className="panel__grab-bar" />
-      </div>
-
-      <header className="panel__head">
-        <h1 className="wordmark">
-          <span className="wordmark__patch" aria-hidden="true">W</span>
-          Waymark
-        </h1>
         <button
           type="button"
-          className="theme-toggle"
-          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-          onClick={() => actions.setTheme(theme === "dark" ? "light" : "dark")}
+          className="panel__grab"
+          aria-expanded={sheet !== "peek"}
+          aria-label={sheet === "full" ? "Collapse route list" : "Expand route list"}
+          onClick={() => {
+            if (desktop) return;
+            actions.setSheet(sheet === "peek" ? "half" : sheet === "half" ? "full" : "peek");
+          }}
         >
-          {theme === "dark" ? (
-            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor" /><g stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><line x1="12" y1="2.5" x2="12" y2="5" /><line x1="12" y1="19" x2="12" y2="21.5" /><line x1="2.5" y1="12" x2="5" y2="12" /><line x1="19" y1="12" x2="21.5" y2="12" /><line x1="5.3" y1="5.3" x2="7" y2="7" /><line x1="17" y1="17" x2="18.7" y2="18.7" /><line x1="5.3" y1="18.7" x2="7" y2="17" /><line x1="17" y1="7" x2="18.7" y2="5.3" /></g></svg>
-          ) : (
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5z" fill="currentColor" /></svg>
-          )}
+          <span className="panel__grab-bar" />
         </button>
-      </header>
+
+        <header className="panel__head">
+          <h1 className="wordmark">
+            <span className="wordmark__patch" aria-hidden="true">W</span>
+            Waymark
+          </h1>
+          <button
+            type="button"
+            className="theme-toggle"
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            onClick={() => actions.setTheme(theme === "dark" ? "light" : "dark")}
+          >
+            {theme === "dark" ? (
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor" /><g stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><line x1="12" y1="2.5" x2="12" y2="5" /><line x1="12" y1="19" x2="12" y2="21.5" /><line x1="2.5" y1="12" x2="5" y2="12" /><line x1="19" y1="12" x2="21.5" y2="12" /><line x1="5.3" y1="5.3" x2="7" y2="7" /><line x1="17" y1="17" x2="18.7" y2="18.7" /><line x1="5.3" y1="18.7" x2="7" y2="17" /><line x1="17" y1="7" x2="18.7" y2="5.3" /></g></svg>
+            ) : (
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5z" fill="currentColor" /></svg>
+            )}
+          </button>
+        </header>
+      </div>
 
       {sample && !noticeDismissed && loaded && (
         <div className="notice">
           <p>
             Showing <strong>sample routes</strong> (approximate). Publish live data once — run the
-            “Refresh route data” workflow in your GitHub repo — and the app updates itself from then on.
+            "Refresh route data" workflow in your GitHub repo — and the app updates itself from then on.
           </p>
           <button type="button" aria-label="Dismiss" onClick={() => actions.dismissSampleNotice()}>×</button>
         </div>

@@ -2,7 +2,8 @@
 import { readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { enrichRoute } from "../src/lib/geo";
-import { buildPlans, fmtMins, trainTimesUrl, stationsAlong } from "../src/lib/plan";
+import { buildPlans, fmtMins, trainTimesUrl, stationsAlong, DEFAULT_PLAN_PREFS } from "../src/lib/plan";
+import type { PlanPrefs } from "../src/lib/plan";
 import type { Budget } from "../src/lib/plan";
 import type { NetworkPayload, Station } from "../src/types";
 
@@ -18,16 +19,16 @@ function station(name: string): Station {
   return s;
 }
 
-function show(routeQuery: string, homeName: string, budget: Budget): void {
+function show(routeQuery: string, homeName: string, budget: Budget, prefs: Partial<PlanPrefs> = {}): void {
   const route =
     routes.find((r) => r.name.toLowerCase().includes(routeQuery.toLowerCase())) ??
     routes.find((r) => r.ref === routeQuery);
   if (!route) { console.log(`--- no route matching "${routeQuery}"`); return; }
   const home = station(homeName);
   const t0 = performance.now();
-  const { plans, candidates } = buildPlans(route, stations, home, budget);
+  const { plans, candidates } = buildPlans(route, stations, home, budget, { ...DEFAULT_PLAN_PREFS, ...prefs });
   const ms = (performance.now() - t0).toFixed(0);
-  console.log(`=== ${route.ref} · ${route.name} (${route.lengthKm.toFixed(0)} km, ${route.trafficFreePct}% tf) — from ${homeName}, ${budget} [${candidates.length} candidate stns, ${ms} ms]`);
+  console.log(`=== [${JSON.stringify(prefs)}] ${route.ref} · ${route.name} (${route.lengthKm.toFixed(0)} km, ${route.trafficFreePct}% tf) — from ${homeName}, ${budget} [${candidates.length} candidate stns, ${ms} ms]`);
   if (!plans.length) { console.log("    no plans fit\n"); return; }
   for (const p of plans) {
     console.log(`  [${p.kinds.join("+")}] ${p.why}`);
@@ -44,9 +45,11 @@ let withStns = 0;
 for (const r of routes) if (stationsAlong(r, stations).length >= 1) withStns++;
 console.log(`${withStns}/${routes.length} routes have at least one station within 3 km\n`);
 
-show("Cardiff → London", "Bristol Temple Meads", "full");
-show("Around Bristol", "Bristol Temple Meads", "half");
-show("Newport → Bristol", "Bristol Temple Meads", "half");
+show("Hastings → London", "Tonbridge", "full");
+show("Hastings → London", "Tonbridge", "full", { shape: "ab" });
+show("Hastings → London", "Tonbridge", "full", { shape: "ab", kmMin: 30, kmMax: 55 });
+show("Hastings → London", "Tonbridge", "full", { maxLegMin: 45 });
+show("Cardiff → London", "Bristol Temple Meads", "full", { shape: "ab", kmMax: 60 });
 
 // reversed-plan sanity: any plan riding hi -> lo must still report lo <= hi
 import("../src/lib/plan").then(() => {});

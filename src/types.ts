@@ -10,6 +10,8 @@ export interface RawRoute {
   via?: string[];
   notes?: string;
   poly: string;
+  /** straight-line connectors joined into the chain (data quality hint) */
+  gaps?: number;
   ele: number[];
   surf: [number, number][]; // [startFraction, class] — 1 traffic-free, 0 on-road
 }

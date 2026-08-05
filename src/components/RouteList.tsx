@@ -1,5 +1,6 @@
 import { actions, useStore, visibleRoutes } from "../store";
-import { km, metres } from "../lib/format";
+import { distanceAway, km, metres } from "../lib/format";
+import { distanceToRoute } from "../lib/geo";
 import { Waymark } from "./Waymark";
 import type { Route } from "../types";
 
@@ -35,6 +36,9 @@ function Star({ id }: { id: string }) {
 }
 
 export function RouteCard({ route }: { route: Route }) {
+  const near = useStore((s) => s.filters.near);
+  const hasSurface = useStore((s) => s.hasSurface);
+  const awayM = near ? distanceToRoute(route, [near.lng, near.lat]) : null;
   return (
     <li>
       <article
@@ -59,11 +63,12 @@ export function RouteCard({ route }: { route: Route }) {
             {route.circular ? "Loop" : "Point to point"}
           </p>
           <p className="card__stats">
+            {awayM != null && <span className="card__away">{distanceAway(awayM)} away</span>}
             <span>{km(route.lengthKm)}</span>
             {route.hasEle && <span>↑ {metres(route.ascentM)}</span>}
-            <span>{route.trafficFreePct}% traffic-free</span>
+            {hasSurface && <span>{route.trafficFreePct}% traffic-free</span>}
           </p>
-          <SurfaceBar route={route} />
+          {hasSurface && <SurfaceBar route={route} />}
         </div>
         <Star id={route.id} />
       </article>

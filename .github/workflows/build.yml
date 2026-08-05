@@ -1,0 +1,43 @@
+# Builds the deployable index.html from source on every push.
+# Commits made by this workflow use GITHUB_TOKEN, which cannot trigger
+# further workflow runs — so no loops.
+name: Build app
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "app.html"
+      - "vite.config.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+      - "tools/report-size.mjs"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Commit built index.html
+        run: |
+          cp dist/index.html index.html
+          if git diff --quiet -- index.html; then
+            echo "No change to built app."
+            exit 0
+          fi
+          git config user.name "waymark-build"
+          git config user.email "actions@users.noreply.github.com"
+          git add index.html
+          git commit -m "Build app from source"
+          git push

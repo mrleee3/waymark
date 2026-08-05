@@ -15,6 +15,21 @@ import type { Route, Station } from "../types";
 
 export type Budget = "half" | "full" | "epic";
 export type PlanKind = "simplest" | "best" | "most";
+export type RideShape = "any" | "ab" | "oab";
+
+export interface PlanPrefs {
+  /** any = let the planner choose; ab = A→B only; oab = out-and-back only */
+  shape: RideShape;
+  /** ride distance window in km; 0 for either bound means "no limit" */
+  kmMin: number;
+  kmMax: number;
+  /** longest acceptable single train leg in minutes; 0 = no limit */
+  maxLegMin: number;
+  /** how far to ride between station and route, km; 0 = default 3 km */
+  maxLinkKm: number;
+}
+
+export const DEFAULT_PLAN_PREFS: PlanPrefs = { shape: "any", kmMin: 0, kmMax: 0, maxLegMin: 0, maxLinkKm: 0 };
 
 export const BUDGET_MIN: Record<Budget, number> = { half: 270, full: 420, epic: 570 };
 export const BUDGET_LABEL: Record<Budget, string> = { half: "Half day", full: "Full day", epic: "All day" };
@@ -194,17 +209,18 @@ function bailoutsBetween(cands: CandidateStation[], route: Route, plan: { lo: nu
  * the given ride budget. Direction (towards start or end) is chosen for the
  * better surface mix, then extent found by binary search.
  */
-function outAndBackLeg(route: Route, c: CandidateStation, rideBudgetMin: number): Leg | null {
+function outAndBackLeg(route: Route, c: CandidateStation, rideBudgetMin: number, kmMax = 0): Leg | null {
   const build = (towardsEnd: boolean, span: number): Leg =>
     towardsEnd ? legStats(route, c.frac, Math.min(1, c.frac + span), { double: true }) : legStats(route, Math.max(0, c.frac - span), c.frac, { double: true });
+  const fits = (leg: Leg) => leg.ride.likely <= rideBudgetMin && (kmMax <= 0 || leg.km <= kmMax * 1.02);
   const fit = (towardsEnd: boolean): Leg | null => {
     const maxSpan = towardsEnd ? 1 - c.frac : c.frac;
     if (maxSpan < 0.02) return null;
     let lo = 0.01, hi = maxSpan;
-    if (build(towardsEnd, hi).ride.likely <= rideBudgetMin) return build(towardsEnd, hi);
+    if (fits(build(towardsEnd, hi))) return build(towardsEnd, hi);
     for (let i = 0; i < 14; i++) {
       const mid = (lo + hi) / 2;
-      if (build(towardsEnd, mid).ride.likely <= rideBudgetMin) lo = mid;
+      if (fits(build(towardsEnd, mid))) lo = mid;
       else hi = mid;
     }
     return build(towardsEnd, lo);
@@ -218,8 +234,14 @@ function outAndBackLeg(route: Route, c: CandidateStation, rideBudgetMin: number)
   return a.tfPct + a.km * 0.3 >= b.tfPct + b.km * 0.3 ? a : b;
 }
 
-export function buildPlans(route: Route, stations: Station[], home: Station, budget: Budget): { plans: Plan[]; candidates: CandidateStation[] } {
-  const candidates = stationsAlong(route, stations);
+export function buildPlans(
+  route: Route,
+  stations: Station[],
+  home: Station,
+  budget: Budget,
+  prefs: PlanPrefs = DEFAULT_PLAN_PREFS
+): { plans: Plan[]; candidates: CandidateStation[] } {
+  const candidates = stationsAlong(route, stations, prefs.maxLinkKm > 0 ? prefs.maxLinkKm * 1000 : MAX_STATION_TO_ROUTE_M);
   const budgetMin = BUDGET_MIN[budget];
   const all: Plan[] = [];
 
@@ -230,8 +252,13 @@ export function buildPlans(route: Route, stations: Station[], home: Station, bud
     railFrom.set(c.s.name, railLeg(c.s, home));
   }
 
+  const kmFloor = Math.max(MIN_RIDE_KM, prefs.kmMin);
   const push = (p: Omit<Plan, "kinds" | "why" | "bailouts">) => {
-    if (p.rideKm < MIN_RIDE_KM) return;
+    if (prefs.shape === "ab" && p.outAndBack) return;
+    if (prefs.shape === "oab" && !p.outAndBack) return;
+    if (p.rideKm < kmFloor) return;
+    if (prefs.kmMax > 0 && p.rideKm > prefs.kmMax * 1.05) return;
+    if (prefs.maxLegMin > 0 && (p.railOut.minutes > prefs.maxLegMin || p.railBack.minutes > prefs.maxLegMin)) return;
     if (p.doorMin > budgetMin * 1.08) return;
     all.push({ ...p, kinds: [], why: "", bailouts: bailoutsBetween(candidates, route, p) });
   };
@@ -262,12 +289,14 @@ export function buildPlans(route: Route, stations: Station[], home: Station, bud
 
   // out-and-back plans: one station, ride sized to the day
   for (const c of candidates) {
+    if (prefs.shape === "ab") break;
     const railOut = railTo.get(c.s.name)!;
     const railBack = railFrom.get(c.s.name)!;
+    if (prefs.maxLegMin > 0 && (railOut.minutes > prefs.maxLegMin || railBack.minutes > prefs.maxLegMin)) continue;
     const linkKm = ((c.toRouteM * 2) * 1.35) / 1000;
     const rideBudget = budgetMin - railOut.minutes - railBack.minutes - linkMinutes(linkKm) - DAY_OVERHEAD_MIN;
     if (rideBudget < 45) continue;
-    const leg = outAndBackLeg(route, c, rideBudget);
+    const leg = outAndBackLeg(route, c, rideBudget, prefs.kmMax);
     if (!leg) continue;
     const doorMin = railOut.minutes + railBack.minutes + leg.ride.likely + linkMinutes(linkKm) + DAY_OVERHEAD_MIN;
     push({
@@ -291,7 +320,8 @@ export function buildPlans(route: Route, stations: Station[], home: Station, bud
   const idealRide = Math.max(90, (budgetMin - railSum(simplest)) * 0.62);
   const best = [...all].sort((a, b) => {
     const q = (p: Plan) =>
-      p.tfPct - (Math.abs(p.ride.likely - idealRide) / idealRide) * 45 - p.linkKm * 2.5;
+      p.tfPct - (Math.abs(p.ride.likely - idealRide) / idealRide) * 45 - p.linkKm * 2.5 -
+      (prefs.shape === "any" && p.outAndBack ? 4 : 0);
     return q(b) - q(a);
   })[0];
 

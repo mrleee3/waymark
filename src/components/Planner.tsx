@@ -6,7 +6,7 @@ import { mapBus } from "../lib/mapbus";
 import {
   BUDGET_LABEL, buildPlans, fmtMins, trainTimesUrl,
 } from "../lib/plan";
-import type { Budget, Plan, PlanKind } from "../lib/plan";
+import type { Budget, Plan, PlanKind, PlanPrefs, RideShape } from "../lib/plan";
 import type { Route, Station } from "../types";
 
 const KIND_LABEL: Record<PlanKind, string> = {
@@ -17,6 +17,56 @@ const KIND_LABEL: Record<PlanKind, string> = {
 
 function titleFor(kinds: PlanKind[]): string {
   return kinds.map((k) => KIND_LABEL[k]).join(" · ");
+}
+
+/* --------------------------- distance range --------------------------- */
+
+const KM_CAP = 160; // slider ceiling; the top value means "no upper limit"
+
+function DistanceRange({ kmMin, kmMax, onChange }: {
+  kmMin: number; kmMax: number;
+  onChange: (kmMin: number, kmMax: number) => void;
+}) {
+  const lo = kmMin;
+  const hi = kmMax > 0 ? Math.min(kmMax, KM_CAP) : KM_CAP;
+  const label =
+    lo === 0 && hi >= KM_CAP ? "any distance"
+    : `${lo}–${hi >= KM_CAP ? `${KM_CAP}+` : hi} km`;
+
+  function setLo(v: number): void {
+    const next = Math.min(v, hi - 10);
+    onChange(Math.max(0, next), hi >= KM_CAP ? 0 : hi);
+  }
+  function setHi(v: number): void {
+    const next = Math.max(v, lo + 10);
+    onChange(lo, next >= KM_CAP ? 0 : next);
+  }
+
+  const pct = (v: number) => (v / KM_CAP) * 100;
+
+  return (
+    <div className="rangedual">
+      <div className="rangedual__head">
+        <span>Ride distance</span>
+        <strong>{label}</strong>
+      </div>
+      <div
+        className="rangedual__track"
+        style={{ ["--lo" as string]: `${pct(lo)}%`, ["--hi" as string]: `${pct(hi)}%` }}
+      >
+        <input
+          type="range" min={0} max={KM_CAP} step={5} value={lo}
+          aria-label="Minimum ride distance"
+          onChange={(e) => setLo(+e.target.value)}
+        />
+        <input
+          type="range" min={0} max={KM_CAP} step={5} value={hi}
+          aria-label="Maximum ride distance"
+          onChange={(e) => setHi(+e.target.value)}
+        />
+      </div>
+    </div>
+  );
 }
 
 /* ------------------------- home station picker ------------------------- */
@@ -177,6 +227,7 @@ export function Planner({ route }: { route: Route }) {
   const stations = useStore((s) => s.stations);
   const homeName = useStore((s) => s.homeStationName);
   const budget = useStore((s) => s.budget);
+  const prefs = useStore((s) => s.planPrefs);
   const [changingHome, setChangingHome] = useState(false);
 
   const home = useMemo(
@@ -185,11 +236,13 @@ export function Planner({ route }: { route: Route }) {
   );
 
   const result = useMemo(
-    () => (home ? buildPlans(route, stations, home, budget) : null),
-    [route, stations, home, budget]
+    () => (home ? buildPlans(route, stations, home, budget, prefs) : null),
+    [route, stations, home, budget, prefs]
   );
 
   const needsHome = !home || changingHome;
+  const prefsActive =
+    prefs.shape !== "any" || prefs.kmMin > 0 || prefs.kmMax > 0 || prefs.maxLegMin > 0 || prefs.maxLinkKm > 0;
 
   return (
     <div className="detail planner">
@@ -207,8 +260,8 @@ export function Planner({ route }: { route: Route }) {
 
       <div className="planner__modes" role="group" aria-label="How are you getting there?">
         <span className="chip chip--on">🚆 Train from home</span>
-        <span className="chip chip--soon" title="Coming next">🚗 Drive to a station</span>
-        <span className="chip chip--soon" title="Coming next">🚴 Ride from home</span>
+        <span className="chip chip--soon">🚗 Drive to a station<i className="chip__soonbadge">soon</i></span>
+        <span className="chip chip--soon">🚴 Ride from home<i className="chip__soonbadge">soon</i></span>
       </div>
 
       {needsHome ? (
@@ -236,6 +289,76 @@ export function Planner({ route }: { route: Route }) {
             ))}
           </div>
 
+          <details className="planner__prefs" open={prefsActive}>
+            <summary>Ride & train preferences{prefsActive ? " · set" : ""}</summary>
+
+            <div className="planner__prefrow" role="group" aria-label="Ride shape">
+              {(
+                [
+                  ["any", "Any shape"],
+                  ["ab", "A → B"],
+                  ["oab", "Out & back"],
+                ] as [RideShape, string][]
+              ).map(([v, label]) => (
+                <button
+                  key={v}
+                  type="button"
+                  className={`chip ${prefs.shape === v ? "chip--on" : ""}`}
+                  onClick={() => actions.setPlanPrefs({ shape: v })}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <DistanceRange
+              kmMin={prefs.kmMin}
+              kmMax={prefs.kmMax}
+              onChange={(kmMin, kmMax) => actions.setPlanPrefs({ kmMin, kmMax })}
+            />
+
+            <div className="planner__prefrow" role="group" aria-label="Longest acceptable train leg">
+              <span className="planner__preflabel">Max train leg</span>
+              {(
+                [
+                  [0, "Any"],
+                  [45, "≤ 45 min"],
+                  [60, "≤ 1 h"],
+                  [90, "≤ 1 h 30"],
+                ] as [number, string][]
+              ).map(([v, label]) => (
+                <button
+                  key={v}
+                  type="button"
+                  className={`chip ${prefs.maxLegMin === v ? "chip--on" : ""}`}
+                  onClick={() => actions.setPlanPrefs({ maxLegMin: v })}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="planner__prefrow" role="group" aria-label="Longest ride between station and route">
+              <span className="planner__preflabel">Station link</span>
+              {(
+                [
+                  [2, "≤ 2 km"],
+                  [0, "≤ 3 km"],
+                  [5, "≤ 5 km"],
+                  [10, "≤ 10 km"],
+                ] as [number, string][]
+              ).map(([v, label]) => (
+                <button
+                  key={v}
+                  type="button"
+                  className={`chip ${prefs.maxLinkKm === v ? "chip--on" : ""}`}
+                  onClick={() => actions.setPlanPrefs({ maxLinkKm: v })}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </details>
+
           {result && result.candidates.length === 0 ? (
             <div className="empty">
               <p>No stations within 3 km of this route.</p>
@@ -244,7 +367,11 @@ export function Planner({ route }: { route: Route }) {
           ) : result && result.plans.length === 0 ? (
             <div className="empty">
               <p>Nothing fits in a {BUDGET_LABEL[budget].toLowerCase()} from {home.name}.</p>
-              <p>Try a longer day, or a route closer to home.</p>
+              <p>
+                {prefsActive
+                  ? "Try relaxing the ride shape, distance range or train limit above — or pick a longer day."
+                  : "Try a longer day, or a route closer to home."}
+              </p>
             </div>
           ) : result ? (
             <div className="planner__plans">

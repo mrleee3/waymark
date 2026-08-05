@@ -1,16 +1,18 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import type { GeoJSONSource, Map as MLMap, MapLayerMouseEvent, Marker } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { COLORS, HOME_BOUNDS, MAP_STYLE_URL } from "../config";
+import { COLORS, HOME_BOUNDS, MAP_STYLES } from "../config";
+import type { BasemapKind } from "../config";
 import { actions, getState, subscribe, visibleRoutes } from "../store";
 import { mapBus } from "../lib/mapbus";
 import { distanceToRoute, nearestFraction, pointAt } from "../lib/geo";
 import { fetchStationLink } from "../lib/link";
-import { distanceAway } from "../lib/format";
+import { fetchPois } from "../lib/pois";
 import type { Route, Station } from "../types";
 
 const LINE_LAYERS = ["ncn-casing", "ncn-line"] as const;
+const BASEMAP_LS = "waymark.basemap";
 
 /** Split each route into per-surface-span features. */
 function networkGeojson(routes: Route[]): GeoJSON.FeatureCollection {
@@ -31,28 +33,110 @@ function networkGeojson(routes: Route[]): GeoJSON.FeatureCollection {
   return { type: "FeatureCollection", features };
 }
 
+const esc = (t: string) =>
+  t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
 export function MapView() {
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     if (!el.current) return;
-    const map = new maplibregl.Map({
-      container: el.current,
-      style: MAP_STYLE_URL,
-      bounds: HOME_BOUNDS,
-      fitBoundsOptions: { padding: 24 },
-      attributionControl: { compact: true },
-      dragRotate: false,
-      pitchWithRotate: false,
-    });
+
+    let basemap: BasemapKind = "detail";
+    try {
+      if (localStorage.getItem(BASEMAP_LS) === "muted") basemap = "muted";
+    } catch { /* private mode */ }
+    const styleUrl = () => MAP_STYLES[basemap];
+
+    let map: MLMap;
+    try {
+      map = new maplibregl.Map({
+        container: el.current,
+        style: styleUrl(),
+        bounds: HOME_BOUNDS,
+        fitBoundsOptions: { padding: 24 },
+        attributionControl: { compact: true },
+        dragRotate: false,
+        pitchWithRotate: false,
+      });
+    } catch {
+      setFailed(true);
+      return;
+    }
     mapRef.current = map;
     map.touchZoomRotate.disableRotation();
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
-    map.addControl(
-      new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: false }, showUserLocation: true }),
-      "top-right"
-    );
+
+    const geo = new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: false }, showUserLocation: true });
+    map.addControl(geo, "top-right");
+    // Nearest-first follows the blue dot.
+    geo.on("geolocate", (e) => {
+      const c = (e as GeolocationPosition).coords;
+      actions.patchFilters({ near: { label: "My location", lng: c.longitude, lat: c.latitude }, sort: "nearest" });
+      actions.dismissLocPrompt();
+    });
+
+    // Basemap detail/muted toggle.
+    map.addControl({
+      onAdd() {
+        const wrap = document.createElement("div");
+        wrap.className = "maplibregl-ctrl maplibregl-ctrl-group";
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "basemap-toggle";
+        b.title = "Toggle map detail";
+        b.setAttribute("aria-label", "Toggle map detail");
+        b.innerHTML =
+          '<svg viewBox="0 0 22 22" width="17" height="17" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M11 3l8 4.5-8 4.5-8-4.5z"/><path d="M3 12l8 4.5 8-4.5"/></g></svg>';
+        b.addEventListener("click", () => {
+          basemap = basemap === "detail" ? "muted" : "detail";
+          try { localStorage.setItem(BASEMAP_LS, basemap); } catch { /* ignore */ }
+          map.setStyle(styleUrl()); // overlays re-added on style.load below
+        });
+        wrap.appendChild(b);
+        return wrap;
+      },
+      onRemove() { /* noop */ },
+    }, "top-right");
+
+    // Stations / cafés-and-pubs layer toggles, kept in sync with the store.
+    const toggleBtns: HTMLButtonElement[] = [];
+    map.addControl({
+      onAdd() {
+        const wrap = document.createElement("div");
+        wrap.className = "maplibregl-ctrl maplibregl-ctrl-group";
+        const add = (glyph: string, label: string, onClick: () => void) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "layer-toggle";
+          b.title = label;
+          b.setAttribute("aria-label", label);
+          b.textContent = glyph;
+          b.addEventListener("click", onClick);
+          wrap.appendChild(b);
+          toggleBtns.push(b);
+        };
+        add("🚉", "Show stations near the route", () => actions.toggleStations());
+        add("☕", "Show cafés & pubs along the route", () => actions.togglePoisVisible());
+        return wrap;
+      },
+      onRemove() { /* noop */ },
+    }, "top-right");
+
+    function syncToggleButtons(): void {
+      const s = getState();
+      const hasRoute = !!s.selectedId;
+      toggleBtns.forEach((b, i) => {
+        const on = i === 0 ? s.showStations : s.showPois && hasRoute;
+        b.classList.toggle("is-on", on);
+        b.classList.toggle("is-idle", i === 1 && !hasRoute);
+        if (i === 1 && s.pois.status === "loading") b.classList.add("is-busy");
+        else b.classList.remove("is-busy");
+      });
+    }
+
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-right");
 
     // If the basemap can't load (offline / style outage) the route layers still
@@ -64,7 +148,8 @@ export function MapView() {
       }
     });
 
-    let loaded = false;
+    let styleReady = false;
+    let handlersBound = false;
     const cursorMarker = mkDot("map-cursor-dot");
     const handles: [Marker, Marker] = [mkHandle(0), mkHandle(1)];
     let rafPending = false;
@@ -93,10 +178,29 @@ export function MapView() {
       return m;
     }
 
+    const planMarkers: [Marker, Marker] = [mkPlanStn(), mkPlanStn()];
+    function mkPlanStn(): Marker {
+      const d = document.createElement("div");
+      d.className = "map-plan-stn";
+      return new maplibregl.Marker({ element: d, anchor: "bottom" });
+    }
+    function setPlanStn(m: Marker, st: Station, label: string): void {
+      const elx = m.getElement();
+      elx.innerHTML = "";
+      const badge = document.createElement("span");
+      badge.className = "map-plan-stn__badge";
+      badge.textContent = "🚆";
+      const name = document.createElement("span");
+      name.className = "map-plan-stn__name";
+      name.textContent = `${st.name} · ${label}`;
+      elx.append(badge, name);
+      m.setLngLat([st.lng, st.lat]).addTo(map);
+    }
+
     const EMPTY: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
 
     function ensureLayers(): void {
-      if (!loaded || map.getSource("ncn")) return;
+      if (!styleReady || map.getSource("ncn")) return;
       map.addSource("ncn", { type: "geojson", data: networkGeojson(getState().routes) });
       map.addLayer({
         id: "ncn-casing",
@@ -133,19 +237,39 @@ export function MapView() {
         },
       });
 
-      // stations near the selected route
+      // stations (all of them until a route is selected, then its corridor)
       map.addSource("stns", { type: "geojson", data: EMPTY });
       map.addLayer({
         id: "stns-circle",
         type: "circle",
         source: "stns",
         paint: {
-          "circle-radius": ["interpolate", ["linear"], ["zoom"], 8, 3.5, 13, 6.5],
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 8, 4, 13, 8],
           "circle-color": "#3b6ea5",
           "circle-stroke-color": "#ffffff",
-          "circle-stroke-width": 2,
+          "circle-stroke-width": 2.5,
         },
       });
+      if (map.getStyle()?.glyphs) {
+        map.addLayer({
+          id: "stns-label",
+          type: "symbol",
+          source: "stns",
+          minzoom: 10.5,
+          layout: {
+            "text-field": ["get", "name"],
+            "text-size": 11,
+            "text-anchor": "top",
+            "text-offset": [0, 0.9],
+            "text-optional": true,
+          },
+          paint: {
+            "text-color": "#2a4a6e",
+            "text-halo-color": "#ffffff",
+            "text-halo-width": 1.4,
+          },
+        });
+      }
 
       // cafés & pubs along the selected route
       map.addSource("pois", { type: "geojson", data: EMPTY });
@@ -161,25 +285,42 @@ export function MapView() {
         },
       });
 
+      if (handlersBound) {
+        syncFromStore(true);
+        return;
+      }
+      handlersBound = true;
+
       const popup = new maplibregl.Popup({ closeButton: false, offset: 10 });
+
       map.on("click", "stns-circle", (e) => {
         const f = e.features?.[0];
         if (!f) return;
-        const st: Station = { name: String(f.properties?.name), lat: e.lngLat.lat, lng: e.lngLat.lng };
         const props = f.properties as { name: string; lat: number; lng: number };
-        void linkStation({ name: props.name, lat: +props.lat, lng: +props.lng });
+        const linked = getState().stationLink.link;
+        if (linked && linked.station.name === props.name) {
+          // second tap on the linked station clears the link
+          actions.setStationLink("idle", null);
+          popup.remove();
+          return;
+        }
+        if (getState().selectedId) void linkStation({ name: props.name, lat: +props.lat, lng: +props.lng });
         popup.setLngLat([+props.lng, +props.lat]).setText(String(props.name)).addTo(map);
-        void st;
       });
+
       map.on("click", "pois-circle", (e) => {
         const f = e.features?.[0];
         if (!f) return;
-        const props = f.properties as { name: string; kind: string; lat: number; lng: number };
-        popup
-          .setLngLat([+props.lng, +props.lat])
-          .setText(`${props.kind === "cafe" ? "Café" : "Pub"} · ${props.name}`)
-          .addTo(map);
+        const props = f.properties as { name: string; kind: string; lat: number; lng: number; hours?: string; website?: string };
+        let html = `<strong>${esc(String(props.name))}</strong><br><span class="poi-popup__kind">${props.kind === "cafe" ? "Café" : "Pub"}</span>`;
+        if (props.hours) html += `<br><span class="poi-popup__hours">${esc(String(props.hours))}</span>`;
+        if (props.website) {
+          const url = String(props.website);
+          if (/^https?:\/\//.test(url)) html += `<br><a href="${esc(url)}" target="_blank" rel="noopener">Website</a>`;
+        }
+        popup.setLngLat([+props.lng, +props.lat]).setHTML(`<div class="poi-popup">${html}</div>`).addTo(map);
       });
+
       for (const layer of ["stns-circle", "pois-circle"]) {
         map.on("mouseenter", layer, () => (map.getCanvas().style.cursor = "pointer"));
         map.on("mouseleave", layer, () => (map.getCanvas().style.cursor = ""));
@@ -228,33 +369,15 @@ export function MapView() {
       map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: padding(), duration: 700, maxZoom: 12.5 })
     );
 
-    const planMarkers: [Marker, Marker] = [mkPlanStn(), mkPlanStn()];
-    function mkPlanStn(): Marker {
-      const d = document.createElement("div");
-      d.className = "map-plan-stn";
-      return new maplibregl.Marker({ element: d, anchor: "bottom" });
-    }
-    function setPlanStn(m: Marker, st: Station, label: string): void {
-      const el = m.getElement();
-      el.innerHTML = "";
-      const badge = document.createElement("span");
-      badge.className = "map-plan-stn__badge";
-      badge.textContent = "🚆";
-      const name = document.createElement("span");
-      name.className = "map-plan-stn__name";
-      name.textContent = `${st.name} · ${label}`;
-      el.append(badge, name);
-      m.setLngLat([st.lng, st.lat]).addTo(map);
-    }
-
-    map.on("load", () => {
-      loaded = true;
+    // style.load fires on initial load AND after every setStyle — re-add overlays.
+    map.on("style.load", () => {
+      styleReady = true;
       ensureLayers();
     });
 
     /* -------- store → map sync (imperative, outside React's render) -------- */
 
-    let prev = { selectedId: null as string | null, clipKey: "", cursor: null as number | null, visKey: "", routesLen: 0, poiCount: -1, linkKey: "", planKey: "" };
+    let prev = { selectedId: null as string | null, clipKey: "", cursor: null as number | null, visKey: "", routesLen: 0, poiCount: -1, linkKey: "", planKey: "", stnKey: "" };
 
     function padding() {
       const desktop = window.matchMedia("(min-width: 768px)").matches;
@@ -265,7 +388,7 @@ export function MapView() {
 
     function syncFromStore(force = false): void {
       const s = getState();
-      if (!loaded) return;
+      if (!styleReady) return;
       if (s.routes.length && s.routes.length !== prev.routesLen) {
         prev.routesLen = s.routes.length;
         ensureLayers();
@@ -280,23 +403,19 @@ export function MapView() {
         prev.visKey = visKey;
         const inVis: maplibregl.ExpressionSpecification = ["in", ["get", "rid"], ["literal", vis]];
         const lineOpacity: maplibregl.ExpressionSpecification = s.selectedId
-          ? ["case", ["==", ["get", "rid"], s.selectedId], 1, ["case", inVis, 0.16, 0.05]]
-          : ["case", inVis, 0.95, 0.08];
-        map.setPaintProperty("ncn-line", "line-opacity", lineOpacity);
-        map.setPaintProperty("ncn-casing", "line-opacity", s.selectedId
-          ? ["case", ["==", ["get", "rid"], s.selectedId], 0.95, 0.1]
-          : ["case", inVis, 0.9, 0.06]);
-        const width: maplibregl.ExpressionSpecification = s.selectedId
+          ? ["case", ["==", ["get", "rid"], s.selectedId], 1, ["case", inVis, 0.18, 0]]
+          : ["case", inVis, 1, 0];
+        for (const id of LINE_LAYERS) map.setPaintProperty(id, "line-opacity", lineOpacity);
+        const lineWidth: maplibregl.ExpressionSpecification = s.selectedId
           ? ["case", ["==", ["get", "rid"], s.selectedId],
               ["interpolate", ["linear"], ["zoom"], 6, 3, 12, 6],
               ["interpolate", ["linear"], ["zoom"], 6, 1.6, 12, 4]]
           : ["interpolate", ["linear"], ["zoom"], 6, 1.6, 12, 4];
-        map.setPaintProperty("ncn-line", "line-width", width);
+        map.setPaintProperty("ncn-line", "line-width", lineWidth);
       }
 
-      // selection change → frame the route
-      if (s.selectedId !== prev.selectedId) {
-        prev.selectedId = s.selectedId;
+      const selChanged = s.selectedId !== prev.selectedId;
+      if (selChanged) {
         const r = s.routes.find((x) => x.id === s.selectedId);
         if (r) {
           map.fitBounds([[r.bbox[0], r.bbox[1]], [r.bbox[2], r.bbox[3]]], {
@@ -307,32 +426,56 @@ export function MapView() {
         }
       }
 
-      // stations corridor for the selected route
-      if (s.selectedId !== prev.selectedId || force) {
-        const sel = s.routes.find((x) => x.id === s.selectedId);
-        const src = map.getSource("stns") as GeoJSONSource | undefined;
-        if (src) {
-          if (sel) {
-            const feats: GeoJSON.Feature[] = [];
-            for (const st of s.stations) {
-              if (st.lng < sel.bbox[0] - 0.12 || st.lng > sel.bbox[2] + 0.12 || st.lat < sel.bbox[1] - 0.08 || st.lat > sel.bbox[3] + 0.08) continue;
-              if (distanceToRoute(sel, [st.lng, st.lat]) > 4000) continue;
-              feats.push({ type: "Feature", properties: { name: st.name, lat: st.lat, lng: st.lng }, geometry: { type: "Point", coordinates: [st.lng, st.lat] } });
-              if (feats.length >= 60) break;
-            }
-            src.setData({ type: "FeatureCollection", features: feats });
-          } else src.setData(EMPTY);
+      // stations: whole network until a route is selected, then its corridor
+      const stnKey = `${s.selectedId ?? "all"}:${s.stations.length}`;
+      if ((selChanged || force || stnKey !== prev.stnKey) && map.getSource("stns")) {
+        prev.stnKey = stnKey;
+        const r = s.routes.find((x) => x.id === s.selectedId);
+        const src = map.getSource("stns") as GeoJSONSource;
+        const feat = (st: Station): GeoJSON.Feature => ({
+          type: "Feature",
+          properties: { name: st.name, lat: st.lat, lng: st.lng },
+          geometry: { type: "Point", coordinates: [st.lng, st.lat] },
+        });
+        if (r) {
+          const features: GeoJSON.Feature[] = [];
+          for (const st of s.stations) {
+            if (st.lng < r.bbox[0] - 0.12 || st.lng > r.bbox[2] + 0.12 || st.lat < r.bbox[1] - 0.08 || st.lat > r.bbox[3] + 0.08) continue;
+            if (distanceToRoute(r, [st.lng, st.lat]) > 4000) continue;
+            features.push(feat(st));
+            if (features.length >= 60) break;
+          }
+          src.setData({ type: "FeatureCollection", features });
+        } else {
+          src.setData({ type: "FeatureCollection", features: s.stations.map(feat) });
         }
       }
+      const stnVis = s.showStations ? "visible" : "none";
+      for (const id of ["stns-circle", "stns-label"]) {
+        if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", stnVis);
+      }
 
-      // POIs
+      // cafés & pubs: fetch lazily when shown, gate visibility on selection
+      if (map.getLayer("pois-circle")) {
+        map.setLayoutProperty("pois-circle", "visibility", s.showPois && s.selectedId ? "visible" : "none");
+      }
+      if (s.showPois && s.selectedId && s.pois.status === "idle") {
+        const r = s.routes.find((x) => x.id === s.selectedId);
+        if (r) {
+          actions.setPois("loading", []);
+          fetchPois(r).then(
+            (items) => { if (getState().selectedId === r.id) actions.setPois("ready", items); },
+            () => actions.setPois("error", [])
+          );
+        }
+      }
       if (s.pois.items.length !== prev.poiCount || force) {
         prev.poiCount = s.pois.items.length;
         (map.getSource("pois") as GeoJSONSource | undefined)?.setData({
           type: "FeatureCollection",
           features: s.pois.items.map((p) => ({
             type: "Feature",
-            properties: { name: p.name, kind: p.kind, lat: p.lat, lng: p.lng },
+            properties: { name: p.name, kind: p.kind, lat: p.lat, lng: p.lng, hours: p.hours, website: p.website },
             geometry: { type: "Point", coordinates: [p.lng, p.lat] },
           })),
         });
@@ -341,14 +484,22 @@ export function MapView() {
       // station link line
       const lk = s.stationLink.link;
       const linkKey = lk ? `${lk.station.name}:${lk.mode}:${Math.round(lk.lengthM)}` : "";
-      if (linkKey !== prev.linkKey || force) {
+      if (linkKey !== prev.linkKey) {
         prev.linkKey = linkKey;
         (map.getSource("link") as GeoJSONSource | undefined)?.setData(
           lk
             ? { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: lk.coords } }
             : EMPTY
         );
-        if (lk) map.setPaintProperty("link-line", "line-dasharray", lk.mode === "bike" ? [2, 1.2] : [0.5, 1.6]);
+        if (lk) {
+          map.setPaintProperty("link-line", "line-dasharray", lk.mode === "bike" ? [2, 1.2] : [0.5, 1.6]);
+          let w = Infinity, so = Infinity, e = -Infinity, n = -Infinity;
+          for (const [lng, lat] of lk.coords) {
+            if (lng < w) w = lng; if (lng > e) e = lng;
+            if (lat < so) so = lat; if (lat > n) n = lat;
+          }
+          map.fitBounds([[w, so], [e, n]], { padding: 90, maxZoom: 15, duration: 700 });
+        }
       }
 
       // day-plan station markers
@@ -380,12 +531,15 @@ export function MapView() {
         }
       }
 
-      // linked cursor dot
+      // hover cursor
       if (s.cursor !== prev.cursor) {
         prev.cursor = s.cursor;
         if (s.cursor != null && r) cursorMarker.setLngLat(pointAt(r, s.cursor)).addTo(map);
         else cursorMarker.remove();
       }
+
+      prev.selectedId = s.selectedId;
+      syncToggleButtons();
     }
 
     const unsub = subscribe(() => syncFromStore());
@@ -395,10 +549,17 @@ export function MapView() {
       unsub();
       mapBus.onFly(null);
       mapBus.onLinkStation(null);
+      mapBus.onFit(null);
       map.remove();
-      mapRef.current = null;
     };
   }, []);
 
-  return <div ref={el} className="map" role="application" aria-label="Map of National Cycle Network routes" />;
+  if (failed) {
+    return (
+      <div className="map map--failed">
+        <p>The map couldn't start on this device — the route list and planner still work below.</p>
+      </div>
+    );
+  }
+  return <div ref={el} className="map" />;
 }

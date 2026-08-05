@@ -5,7 +5,8 @@ import { distanceToRoute } from "./lib/geo";
 import type { LoadedNetwork } from "./data/loader";
 import type { Poi } from "./lib/pois";
 import type { StationLink } from "./lib/link";
-import type { Budget, Plan } from "./lib/plan";
+import { DEFAULT_PLAN_PREFS } from "./lib/plan";
+import type { Budget, Plan, PlanPrefs } from "./lib/plan";
 
 export type Theme = "light" | "dark";
 export type SheetPos = "peek" | "half" | "full";
@@ -32,6 +33,11 @@ export interface State {
   sampleNoticeDismissed: boolean;
   generated: string;
   live: boolean;
+  /** false when the payload carries no usable surface data */
+  hasSurface: boolean;
+  /** map layer visibility (the 🚉 / ☕ buttons on the map) */
+  showStations: boolean;
+  showPois: boolean;
   locPromptDismissed: boolean;
   /** Cafés & pubs for the selected route. */
   pois: { status: "idle" | "loading" | "ready" | "error"; items: Poi[] };
@@ -41,6 +47,7 @@ export interface State {
   planning: boolean;
   homeStationName: string | null;
   budget: Budget;
+  planPrefs: PlanPrefs;
   plan: Plan | null;
 }
 
@@ -51,7 +58,25 @@ const LS = {
   locPrompt: "waymark.locPromptDismissed",
   home: "waymark.homeStation",
   budget: "waymark.budget",
+  planPrefs: "waymark.planPrefs",
 };
+
+function loadPlanPrefs(): PlanPrefs {
+  try {
+    const raw = safeGet(LS.planPrefs);
+    if (!raw) return { ...DEFAULT_PLAN_PREFS };
+    const p = JSON.parse(raw) as Partial<PlanPrefs>;
+    return {
+      shape: p.shape === "ab" || p.shape === "oab" ? p.shape : "any",
+      kmMin: typeof p.kmMin === "number" && p.kmMin > 0 ? p.kmMin : 0,
+      kmMax: typeof p.kmMax === "number" && p.kmMax > 0 ? p.kmMax : 0,
+      maxLegMin: typeof p.maxLegMin === "number" && p.maxLegMin > 0 ? p.maxLegMin : 0,
+      maxLinkKm: typeof p.maxLinkKm === "number" && p.maxLinkKm > 0 ? p.maxLinkKm : 0,
+    };
+  } catch {
+    return { ...DEFAULT_PLAN_PREFS };
+  }
+}
 
 function initialTheme(): Theme {
   const saved = safeGet(LS.theme);
@@ -79,12 +104,16 @@ let state: State = {
   sampleNoticeDismissed: safeGet(LS.notice) === "1",
   generated: "",
   live: false,
+  hasSurface: true,
+  showStations: true,
+  showPois: false,
   locPromptDismissed: safeGet(LS.locPrompt) === "1",
   pois: { status: "idle", items: [] },
   stationLink: { status: "idle", link: null },
   planning: false,
   homeStationName: safeGet(LS.home),
   budget: (["half", "full", "epic"].includes(safeGet(LS.budget) ?? "") ? safeGet(LS.budget) : "full") as Budget,
+  planPrefs: loadPlanPrefs(),
   plan: null,
 };
 
@@ -128,6 +157,7 @@ export const actions = {
       attribution: net.attribution,
       generated: net.generated,
       live: net.live,
+      hasSurface: net.routes.some((r) => r.trafficFreePct > 0),
     });
     applyHash(); // now that routes exist, honour any deep link
   },
@@ -168,6 +198,11 @@ export const actions = {
   setBudget(budget: Budget) {
     safeSet(LS.budget, budget);
     set({ budget, plan: null });
+  },
+  setPlanPrefs(patch: Partial<PlanPrefs>) {
+    const planPrefs = { ...state.planPrefs, ...patch };
+    safeSet(LS.planPrefs, JSON.stringify(planPrefs));
+    set({ planPrefs, plan: null });
   },
   choosePlan(plan: Plan | null) {
     if (!plan) { set({ plan: null }); return; }
@@ -218,6 +253,13 @@ export const actions = {
   setStationLink(status: State["stationLink"]["status"], link: StationLink | null = state.stationLink.link) {
     set({ stationLink: { status, link } });
   },
+  toggleStations() {
+    const hiding = state.showStations;
+    set({ showStations: !state.showStations, ...(hiding ? { stationLink: { status: "idle" as const, link: null } } : {}) });
+  },
+  togglePoisVisible() {
+    set({ showPois: !state.showPois });
+  },
 };
 
 /* ------------------------------ derived: results ---------------------------- */
@@ -228,7 +270,7 @@ export function visibleRoutes(s: State): Route[] {
   let list = s.routes.filter((r) => {
     if (f.shortlistOnly && !s.shortlist.includes(r.id)) return false;
     if (r.lengthKm < f.lenMin || r.lengthKm > f.lenMax) return false;
-    if (r.trafficFreePct < f.tfMin) return false;
+    if (s.hasSurface && r.trafficFreePct < f.tfMin) return false;
     if (f.circularOnly && !r.circular) return false;
     if (q && !(`${r.ref} ${r.name} ${r.region}`.toLowerCase().includes(q))) return false;
     if (f.near && distanceToRoute(r, [f.near.lng, f.near.lat]) > f.radiusKm * 1000) return false;

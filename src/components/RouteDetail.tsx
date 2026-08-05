@@ -3,7 +3,6 @@ import { actions, useStore } from "../store";
 import { clipGeometry, clipStats, haversine, pointAt } from "../lib/geo";
 import { distanceAway, km, metres, rideTime } from "../lib/format";
 import { buildGpx, downloadGpx } from "../lib/gpx";
-import { fetchPois } from "../lib/pois";
 import { mapBus } from "../lib/mapbus";
 import { ElevationProfile } from "./ElevationProfile";
 import { Waymark } from "./Waymark";
@@ -44,6 +43,7 @@ export function RouteDetail({ route }: { route: Route }) {
   const clipping = useStore((s) => s.clipping);
   const shortlisted = useStore((s) => s.shortlist.includes(route.id));
   const sample = useStore((s) => s.sample);
+  const hasSurface = useStore((s) => s.hasSurface);
   const attribution = useStore((s) => s.attribution);
   const pois = useStore((s) => s.pois);
   const link = useStore((s) => s.stationLink);
@@ -105,19 +105,6 @@ export function RouteDetail({ route }: { route: Route }) {
     }
   }
 
-  async function togglePois(): Promise<void> {
-    if (pois.status === "ready") {
-      actions.setPois("idle", []);
-      return;
-    }
-    actions.setPois("loading", []);
-    try {
-      actions.setPois("ready", await fetchPois(route));
-    } catch {
-      actions.setPois("error", []);
-    }
-  }
-
   const est = section
     ? rideTime(section.lengthKm, section.ascentM)
     : rideTime(route.lengthKm, route.ascentM);
@@ -158,10 +145,17 @@ export function RouteDetail({ route }: { route: Route }) {
 
       {route.notes && <p className="detail__notes">{route.notes}</p>}
 
+      {(route.gaps ?? 0) > 0 && (
+        <p className="detail__gaps">
+          ⚠ This route includes {route.gaps} joined {route.gaps === 1 ? "gap" : "gaps"} drawn as straight
+          lines — check those short stretches before relying on the GPX.
+        </p>
+      )}
+
       <dl className="statgrid">
         <div><dt>Length</dt><dd>{km(route.lengthKm)}</dd></div>
         {route.hasEle && <div><dt>Ascent</dt><dd>↑ {metres(route.ascentM)}</dd></div>}
-        <div><dt>Traffic-free</dt><dd>{route.trafficFreePct}%</dd></div>
+        {hasSurface && <div><dt>Traffic-free</dt><dd>{route.trafficFreePct}%</dd></div>}
         <div><dt>Easy pace</dt><dd>~{est}</dd></div>
       </dl>
 
@@ -174,13 +168,15 @@ export function RouteDetail({ route }: { route: Route }) {
         <svg viewBox="0 0 16 16" aria-hidden="true" className="planbtn__arr"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
       </button>
 
-      <div className="surfkey">
-        <span className="surfbar surfbar--lg" style={{ ["--tf-pct" as string]: `${route.trafficFreePct}%` }} />
-        <span className="surfkey__legend">
-          <i className="surfkey__dot surfkey__dot--tf" /> traffic-free
-          <i className="surfkey__dot surfkey__dot--road" /> on-road
-        </span>
-      </div>
+      {hasSurface && (
+        <div className="surfkey">
+          <span className="surfbar surfbar--lg" style={{ ["--tf-pct" as string]: `${route.trafficFreePct}%` }} />
+          <span className="surfkey__legend">
+            <i className="surfkey__dot surfkey__dot--tf" /> traffic-free
+            <i className="surfkey__dot surfkey__dot--road" /> on-road
+          </span>
+        </div>
+      )}
 
       {route.hasEle ? (
         <ElevationProfile route={route} />
@@ -209,13 +205,12 @@ export function RouteDetail({ route }: { route: Route }) {
         )}
       </div>
 
-      <div className="poirow">
-        <button type="button" className={`chip ${pois.status === "ready" ? "chip--on" : ""}`} onClick={() => void togglePois()}>
-          {pois.status === "loading" ? "Finding cafés & pubs…" : pois.status === "ready" ? `☕ ${cafes} cafés · 🍺 ${pubs} pubs` : "Show cafés & pubs"}
-        </button>
-        {pois.status === "error" && <span className="poirow__err">Couldn't reach the places service — try again.</span>}
-        {pois.status === "ready" && <span className="poirow__hint">Tap a dot on the map for its name.</span>}
-      </div>
+      {pois.status === "ready" && (
+        <p className="poirow__hint">☕ {cafes} cafés and 🍺 {pubs} pubs shown on the map — tap a dot for details.</p>
+      )}
+      {pois.status === "error" && (
+        <p className="poirow__err">Couldn't reach the cafés & pubs service — tap ☕ on the map to retry.</p>
+      )}
 
       {(endpoints.start.length > 0 || endpoints.end.length > 0) && (
         <section className="stations">

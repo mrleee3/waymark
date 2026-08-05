@@ -456,6 +456,7 @@ for (const [ref, entry] of [...byRef.entries()].sort((a, b) => a[0].localeCompar
     const viaText = via.length ? ` Passes ${via.length > 1 ? via.slice(0, -1).join(", ") + " and " + via[via.length - 1] : via[0]}.` : "";
     const bridgeText = chain.bridges > 0 ? ` Includes ${chain.bridges} unsigned linking ${chain.bridges === 1 ? "section" : "sections"} drawn as straight lines.` : "";
     routes.push({
+      gaps: chain.bridges ?? 0,
       id: `ncn-${ref.toLowerCase().replace(/[^a-z0-9]+/g, "-")}${chains.length > 1 ? `-${i + 1}` : ""}`,
       ref,
       name,

@@ -177,19 +177,29 @@ button {
 
 .panel--sheet {
   left: 0; right: 0; bottom: 0;
-  height: 94vh;
-  height: 94dvh;
   border-radius: var(--r-panel) var(--r-panel) 0 0;
-  transition: transform 320ms cubic-bezier(0.32, 0.72, 0.28, 1);
+  transition: height 300ms cubic-bezier(0.32, 0.72, 0.28, 1);
+  will-change: height;
+  overflow: hidden;
 }
+.panel--sheet.is-peek { height: 136px; }
+.panel--sheet.is-half { height: 52vh; height: 52dvh; }
+.panel--sheet.is-full { height: 94vh; height: 94dvh; }
 .panel--sheet.is-dragging { transition: none; }
 
-.panel__grab {
-  padding: 10px 0 6px;
+.panel__dragzone { touch-action: none; cursor: grab; flex: none; }
+.panel__dragzone:active { cursor: grabbing; }
+.panel--rail .panel__dragzone { touch-action: auto; cursor: default; }
+
+button.panel__grab {
+  width: 100%;
+  padding: 12px 0 8px;
   display: flex;
   justify-content: center;
   cursor: grab;
   touch-action: none;
+  background: none;
+  border: 0;
 }
 .panel--rail .panel__grab { display: none; }
 .panel__grab-bar {
@@ -837,4 +847,99 @@ a.plancard__time:hover { text-decoration: underline; }
   border: 1px solid var(--line-strong); border-radius: 999px;
   font-family: var(--font-ui); font-size: 11.5px; font-weight: 600; white-space: nowrap;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+/* --------------------------- recovered map extras --------------------------- */
+
+.basemap-toggle { display: grid; place-items: center; color: #333; }
+.layer-toggle { font-size: 14px; display: grid; place-items: center; }
+.layer-toggle.is-on { background: #1b2620 !important; }
+.layer-toggle.is-idle { opacity: 0.45; }
+.layer-toggle.is-busy { animation: pulse 1s infinite; }
+@keyframes pulse { 50% { opacity: 0.4; } }
+
+.poi-popup { font: 12.5px/1.45 var(--font-ui); }
+.poi-popup__kind { color: #777; }
+.poi-popup__hours { font-family: var(--font-data); font-size: 11px; }
+.poi-popup a { color: #1d4f91; }
+
+.detail__gaps {
+  margin: 0 0 10px;
+  padding: 9px 12px;
+  background: color-mix(in srgb, var(--road) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--road) 35%, transparent);
+  border-radius: 10px;
+  font-size: 12.5px;
+}
+.card__away { color: var(--waymark); font-weight: 700; }
+.map--failed { display: grid; place-items: center; padding: 24px; }
+.map--failed p { max-width: 30em; text-align: center; color: var(--ink-2); }
+
+/* --------------------------- planner preferences --------------------------- */
+
+.chip__soonbadge {
+  margin-left: 6px;
+  padding: 1px 6px;
+  background: var(--line);
+  border-radius: 999px;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-2);
+}
+
+.planner__prefs { margin: 2px 0 14px; }
+.planner__prefs summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--tf);
+  font-weight: 600;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.planner__prefs[open] summary { margin-bottom: 10px; }
+.planner__prefrow {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin: 0 0 12px;
+}
+.planner__preflabel { font-size: 13px; color: var(--ink-2); margin-right: 2px; }
+
+.rangedual { margin: 0 0 14px; }
+.rangedual__head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 13px; margin-bottom: 10px;
+}
+.rangedual__head span { color: var(--ink-2); }
+.rangedual__track {
+  position: relative; height: 28px;
+}
+.rangedual__track::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 12px; height: 4px;
+  border-radius: 2px; background: var(--line);
+}
+.rangedual__track::after {
+  content: ""; position: absolute; top: 12px; height: 4px; border-radius: 2px;
+  left: var(--lo); right: calc(100% - var(--hi));
+  background: var(--tf);
+}
+.rangedual__track input[type="range"] {
+  position: absolute; inset: 0; width: 100%; margin: 0;
+  -webkit-appearance: none; appearance: none;
+  background: none; pointer-events: none; z-index: 2;
+}
+.rangedual__track input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 24px; height: 24px; margin-top: 2px; border-radius: 50%;
+  background: var(--panel-solid);
+  border: 2.5px solid var(--tf);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  pointer-events: auto; cursor: grab;
+}
+.rangedual__track input[type="range"]::-moz-range-thumb {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--panel-solid);
+  border: 2.5px solid var(--tf);
+  pointer-events: auto; cursor: grab;
 }

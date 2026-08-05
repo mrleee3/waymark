@@ -2,6 +2,8 @@ import type { LngLat, Route } from "../types";
 
 export interface Poi {
   kind: "cafe" | "pub";
+  hours?: string;
+  website?: string;
   name: string;
   lng: number;
   lat: number;
@@ -45,7 +47,14 @@ nwr["amenity"="pub"](around:350,${line});
     if (lat == null || lon == null) continue;
     const amenity = el.tags?.amenity;
     if (amenity !== "cafe" && amenity !== "pub") continue;
-    pois.push({ kind: amenity, name: el.tags?.name ?? (amenity === "cafe" ? "Café" : "Pub"), lng: lon, lat });
+    pois.push({
+      kind: amenity,
+      name: el.tags?.name ?? (amenity === "cafe" ? "Café" : "Pub"),
+      hours: el.tags?.opening_hours,
+      website: el.tags?.website ?? el.tags?.["contact:website"],
+      lng: lon,
+      lat,
+    });
   }
   cache.set(route.id, pois);
   return pois;
