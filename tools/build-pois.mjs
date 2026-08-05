@@ -29,10 +29,14 @@ if (!ROUTES_PATH) {
   process.exit(1);
 }
 
+// kumi first: the main .de instance rate-limits shared/cloud IPs (like CI
+// runners) aggressively; kumi and private.coffee are far more tolerant.
 const MIRRORS = [
-  "https://overpass-api.de/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
 ];
+const UA = "waymark-poi-harvest/1.0 (weekly CI build; github.com/mrleee3/waymark)";
 
 // Great Britain, in latitude bands so no single query is huge.
 const WEST = -8.7, EAST = 1.8, SOUTH = 49.8, NORTH = 61.0, BANDS = 12;
@@ -50,7 +54,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function overpass(query) {
   let lastErr;
-  for (let attempt = 0; attempt < 3; attempt++) {
+  const attempts = MIRRORS.length * 2;
+  for (let attempt = 0; attempt < attempts; attempt++) {
     const url = MIRRORS[attempt % MIRRORS.length];
     try {
       const ctrl = new AbortController();
@@ -58,27 +63,35 @@ async function overpass(query) {
       const res = await fetch(url, {
         method: "POST",
         body: "data=" + encodeURIComponent(query),
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": UA },
         signal: ctrl.signal,
       });
       clearTimeout(t);
-      if (!res.ok) throw new Error(`HTTP ${res.status} from ${url}`);
+      if (!res.ok) {
+        const retryAfter = +(res.headers.get("retry-after") ?? 0);
+        const err = new Error(`HTTP ${res.status} from ${new URL(url).host}`);
+        err.retryAfter = retryAfter;
+        throw err;
+      }
       return await res.json();
     } catch (e) {
       lastErr = e;
-      console.warn(`  attempt ${attempt + 1} failed (${e.message}); backing off…`);
-      await sleep(4000 * (attempt + 1));
+      const wait = Math.max((e.retryAfter ?? 0) * 1000, 5000 * (attempt + 1));
+      console.warn(`  attempt ${attempt + 1}/${attempts} failed (${e.message}); waiting ${wait / 1000}s…`);
+      await sleep(wait);
     }
   }
   throw lastErr;
 }
 
-async function harvest() {
+async function harvest(report) {
   if (FIXTURE) {
     console.log(`offline mode: reading ${FIXTURE}`);
-    return JSON.parse(readFileSync(FIXTURE, "utf8")).elements ?? [];
+    report.push({ band: "fixture", ok: true });
+    return { elements: JSON.parse(readFileSync(FIXTURE, "utf8")).elements ?? [], complete: true };
   }
   const all = [];
+  let complete = true;
   const step = (NORTH - SOUTH) / BANDS;
   for (let i = 0; i < BANDS; i++) {
     const s = (SOUTH + i * step).toFixed(3);
@@ -86,12 +99,20 @@ async function harvest() {
     const bbox = `${s},${WEST},${n},${EAST}`;
     const q = `[out:json][timeout:180];(node["amenity"~"^(cafe|pub)$"](${bbox});way["amenity"~"^(cafe|pub)$"](${bbox}););out center tags;`;
     process.stdout.write(`band ${i + 1}/${BANDS} (${s}–${n})… `);
-    const data = await overpass(q);
-    console.log(`${data.elements?.length ?? 0} elements`);
-    all.push(...(data.elements ?? []));
+    try {
+      const data = await overpass(q);
+      const count = data.elements?.length ?? 0;
+      console.log(`${count} elements`);
+      report.push({ band: `${s}-${n}`, ok: true, count });
+      all.push(...(data.elements ?? []));
+    } catch (e) {
+      console.warn(`band failed: ${e.message}`);
+      report.push({ band: `${s}-${n}`, ok: false, error: String(e.message) });
+      complete = false;
+    }
     if (i < BANDS - 1) await sleep(1500);
   }
-  return all;
+  return { elements: all, complete };
 }
 
 /* ------------------------- spatial index of routes ------------------------- */
@@ -133,8 +154,9 @@ function nearAnyRoute(grid, lng, lat) {
 
 const routes = JSON.parse(readFileSync(ROUTES_PATH, "utf8"));
 const grid = buildGrid(routes);
-const elements = await harvest();
-console.log(`harvested ${elements.length} raw elements`);
+const report = [];
+const { elements, complete } = await harvest(report);
+console.log(`harvested ${elements.length} raw elements (complete: ${complete})`);
 
 const seen = new Set();
 const clip = (s, n) => (s && s.length > n ? s.slice(0, n) : s || "");
@@ -155,6 +177,17 @@ for (const el of elements) {
   rows.push([+lng.toFixed(5), +lat.toFixed(5), kind, name, hours, website]);
 }
 
+// The report is committed either way — it's our log channel from CI.
+writeFileSync("tools/.pois-report.json", JSON.stringify({
+  when: new Date().toISOString(), complete, kept: rows.length, raw: seen.size, bands: report,
+}, null, 1));
+
+if (!complete) {
+  // A partial file would silently show "no cafés here" on uncovered routes,
+  // so keep whatever pois.json is already published and just report.
+  console.error("harvest incomplete — pois.json NOT written this run (see tools/.pois-report.json).");
+  process.exit(0);
+}
 const out = { gen: new Date().toISOString().slice(0, 10), count: rows.length, pois: rows };
 const json = JSON.stringify(out);
 writeFileSync(OUT_PATH, json);
