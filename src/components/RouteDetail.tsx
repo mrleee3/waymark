@@ -165,6 +165,15 @@ export function RouteDetail({ route }: { route: Route }) {
         <div><dt>Easy pace</dt><dd>~{est}</dd></div>
       </dl>
 
+      <button type="button" className="planbtn" onClick={() => actions.setPlanning(true)}>
+        <span className="planbtn__ico" aria-hidden="true">🚆</span>
+        <span className="planbtn__txt">
+          <strong>Plan a day out here</strong>
+          <small>Trains out and back, ride sized to your day</small>
+        </span>
+        <svg viewBox="0 0 16 16" aria-hidden="true" className="planbtn__arr"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      </button>
+
       <div className="surfkey">
         <span className="surfbar surfbar--lg" style={{ ["--tf-pct" as string]: `${route.trafficFreePct}%` }} />
         <span className="surfkey__legend">

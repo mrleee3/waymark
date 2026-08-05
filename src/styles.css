@@ -747,3 +747,94 @@ input[type="range"] { accent-color: var(--waymark); }
 .stations__morebtn { justify-self: start; color: var(--waymark); font-weight: 600; font-size: 12.5px; }
 
 .search__glyph--station, .search__glyph--geocode { font-size: 13px; }
+
+/* ------------------------------- day planner ------------------------------- */
+
+.planbtn {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; margin: 14px 0 4px; padding: 12px 14px;
+  background: var(--panel-solid); border: 1px solid var(--line-strong);
+  border-radius: var(--r-card); cursor: pointer; text-align: left;
+  color: var(--ink); font: inherit;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.planbtn:hover { background: var(--hover); border-color: var(--tf); }
+.planbtn__ico { font-size: 22px; line-height: 1; }
+.planbtn__txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.planbtn__txt strong { font-size: 14.5px; }
+.planbtn__txt small { color: var(--ink-2); font-size: 12.5px; }
+.planbtn__arr { width: 16px; height: 16px; color: var(--ink-2); flex: none; }
+
+.planner__head { margin: 6px 0 10px; }
+.planner__head h2 { margin: 0; font-size: 20px; }
+.planner__route { margin: 3px 0 0; color: var(--ink-2); font-size: 13px; }
+
+.planner__modes { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.chip--soon { opacity: 0.5; cursor: default; }
+
+.planner__from { font-size: 14px; margin: 2px 0 10px; }
+.planner__change {
+  margin-left: 8px; padding: 0; border: 0; background: none; cursor: pointer;
+  color: var(--tf); font: inherit; font-size: 13px; text-decoration: underline;
+}
+.planner__budget { display: flex; gap: 8px; margin-bottom: 14px; }
+.planner__plans { display: flex; flex-direction: column; gap: 12px; }
+.planner__note { margin: 14px 0 4px; color: var(--ink-2); font-size: 12.5px; line-height: 1.45; }
+
+.homepick { margin: 4px 0 8px; }
+.homepick__label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+.homepick__input {
+  width: 100%; padding: 10px 12px; font: inherit; color: var(--ink);
+  background: var(--panel-solid); border: 1px solid var(--line-strong); border-radius: var(--r-chip);
+}
+.homepick__input:focus { outline: 2px solid var(--tf); outline-offset: 1px; }
+.homepick__list { list-style: none; margin: 6px 0 0; padding: 0; border: 1px solid var(--line); border-radius: var(--r-chip); overflow: hidden; }
+.homepick__list li + li { border-top: 1px solid var(--line); }
+.homepick__list button {
+  display: block; width: 100%; padding: 9px 12px; border: 0; background: var(--panel-solid);
+  color: var(--ink); font: inherit; font-size: 14px; text-align: left; cursor: pointer;
+}
+.homepick__list button:hover { background: var(--hover); }
+.homepick__loc { margin-top: 10px; }
+.homepick__err { margin: 8px 0 0; color: var(--road); font-size: 12.5px; }
+.homepick__note { margin: 8px 0 0; color: var(--ink-2); font-size: 12px; }
+
+.plancard {
+  padding: 12px 14px; background: var(--panel-solid);
+  border: 1px solid var(--line-strong); border-radius: var(--r-card);
+}
+.plancard--on { border-color: var(--tf); box-shadow: 0 0 0 1px var(--tf); }
+.plancard__head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.plancard__head h4 { margin: 0; font-size: 15px; }
+.plancard__door { color: var(--ink-2); font-family: var(--font-data); font-size: 11.5px; white-space: nowrap; }
+.plancard__why { margin: 5px 0 10px; color: var(--ink-2); font-size: 13px; line-height: 1.4; }
+.plancard__legs { list-style: none; margin: 0; padding: 0; }
+.plancard__leg {
+  display: flex; align-items: center; gap: 9px; padding: 6px 0;
+  border-top: 1px solid var(--line); font-size: 13.5px;
+}
+.plancard__ico { flex: none; }
+.plancard__what { flex: 1; min-width: 0; }
+.plancard__time { color: var(--ink); font-family: var(--font-data); font-size: 12px; white-space: nowrap; }
+a.plancard__time { color: var(--tf); text-decoration: none; }
+a.plancard__time:hover { text-decoration: underline; }
+.plancard__paces { padding: 0 0 6px 26px; color: var(--ink-2); font-family: var(--font-data); font-size: 11px; }
+.plancard__bail { margin: 8px 0 0; padding-top: 8px; border-top: 1px solid var(--line); color: var(--ink-2); font-size: 12.5px; line-height: 1.5; }
+.plancard__bailstn {
+  padding: 0; border: 0; background: none; cursor: pointer;
+  color: var(--ink); font: inherit; font-size: 12.5px; text-decoration: underline;
+}
+.plancard__actions { margin-top: 10px; display: flex; gap: 8px; }
+
+.map-plan-stn { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.map-plan-stn__badge {
+  display: grid; place-items: center; width: 26px; height: 26px;
+  background: #1d4f91; border: 2px solid #fff; border-radius: 50%;
+  font-size: 13px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+.map-plan-stn__name {
+  order: -1; padding: 3px 8px; background: var(--panel-solid); color: var(--ink);
+  border: 1px solid var(--line-strong); border-radius: 999px;
+  font-family: var(--font-ui); font-size: 11.5px; font-weight: 600; white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}

@@ -5,6 +5,7 @@ import { distanceToRoute } from "./lib/geo";
 import type { LoadedNetwork } from "./data/loader";
 import type { Poi } from "./lib/pois";
 import type { StationLink } from "./lib/link";
+import type { Budget, Plan } from "./lib/plan";
 
 export type Theme = "light" | "dark";
 export type SheetPos = "peek" | "half" | "full";
@@ -36,6 +37,11 @@ export interface State {
   pois: { status: "idle" | "loading" | "ready" | "error"; items: Poi[] };
   /** Bike link from a chosen station to the selected route. */
   stationLink: { status: "idle" | "loading" | "ready"; link: StationLink | null };
+  /** Day-out planner. */
+  planning: boolean;
+  homeStationName: string | null;
+  budget: Budget;
+  plan: Plan | null;
 }
 
 const LS = {
@@ -43,6 +49,8 @@ const LS = {
   theme: "waymark.theme",
   notice: "waymark.sampleNoticeDismissed",
   locPrompt: "waymark.locPromptDismissed",
+  home: "waymark.homeStation",
+  budget: "waymark.budget",
 };
 
 function initialTheme(): Theme {
@@ -74,6 +82,10 @@ let state: State = {
   locPromptDismissed: safeGet(LS.locPrompt) === "1",
   pois: { status: "idle", items: [] },
   stationLink: { status: "idle", link: null },
+  planning: false,
+  homeStationName: safeGet(LS.home),
+  budget: (["half", "full", "epic"].includes(safeGet(LS.budget) ?? "") ? safeGet(LS.budget) : "full") as Budget,
+  plan: null,
 };
 
 const listeners = new Set<() => void>();
@@ -132,6 +144,8 @@ export const actions = {
         sheet: id ? "half" : state.sheet,
         pois: { status: "idle", items: [] },
         stationLink: { status: "idle", link: null },
+        planning: false,
+        plan: null,
       });
     // View Transitions API — progressive enhancement for the panel swap.
     const dvt = (document as unknown as { startViewTransition?: (cb: () => void) => void }).startViewTransition;
@@ -140,7 +154,24 @@ export const actions = {
     writeHash();
   },
   setClipping(on: boolean) {
-    set({ clipping: on, clip: on ? state.clip ?? [0.15, 0.85] : null });
+    set({ clipping: on, clip: on ? state.clip ?? [0.15, 0.85] : null, plan: on ? state.plan : null });
+    writeHash();
+  },
+  setPlanning(on: boolean) {
+    set({ planning: on });
+  },
+  setHomeStation(name: string | null) {
+    if (name) safeSet(LS.home, name);
+    else { try { localStorage.removeItem(LS.home); } catch { /* ignore */ } }
+    set({ homeStationName: name, plan: null });
+  },
+  setBudget(budget: Budget) {
+    safeSet(LS.budget, budget);
+    set({ budget, plan: null });
+  },
+  choosePlan(plan: Plan | null) {
+    if (!plan) { set({ plan: null }); return; }
+    set({ plan, clip: [plan.lo, plan.hi], clipping: true, sheet: "peek" });
     writeHash();
   },
   setClip(a: number, b: number) {

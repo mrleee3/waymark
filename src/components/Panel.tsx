@@ -7,6 +7,7 @@ import { SearchBox } from "./SearchBox";
 import { Filters } from "./Filters";
 import { RouteList } from "./RouteList";
 import { RouteDetail } from "./RouteDetail";
+import { Planner } from "./Planner";
 
 const SNAP: Record<SheetPos, number> = { peek: 0.88, half: 0.45, full: 0.06 };
 
@@ -26,6 +27,7 @@ export function Panel() {
   const loadError = useStore((s) => s.loadError);
   const selectedId = useStore((s) => s.selectedId);
   const route = useStore((s) => s.routes.find((r) => r.id === s.selectedId));
+  const planning = useStore((s) => s.planning);
   const sample = useStore((s) => s.sample);
   const noticeDismissed = useStore((s) => s.sampleNoticeDismissed);
   const generated = useStore((s) => s.generated);
@@ -156,6 +158,8 @@ export function Panel() {
           <div className="skeleton" aria-label="Loading routes">
             {[0, 1, 2, 3].map((i) => <div key={i} className="skeleton__card" />)}
           </div>
+        ) : route && planning ? (
+          <Planner route={route} />
         ) : route ? (
           <RouteDetail route={route} />
         ) : (

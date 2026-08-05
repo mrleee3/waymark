@@ -1,7 +1,10 @@
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync, statSync, renameSync, existsSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 
 try {
+  // The build entry is app.html (the deploy target index.html would be
+  // consumed as input otherwise) — publish the output under its real name.
+  if (existsSync("dist/app.html")) renameSync("dist/app.html", "dist/index.html");
   const path = "dist/index.html";
   const raw = statSync(path).size;
   const gz = gzipSync(readFileSync(path)).length;

@@ -224,6 +224,28 @@ export function MapView() {
       actions.setStationLink("ready", link);
     }
     mapBus.onLinkStation((st) => void linkStation(st));
+    mapBus.onFit((b) =>
+      map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: padding(), duration: 700, maxZoom: 12.5 })
+    );
+
+    const planMarkers: [Marker, Marker] = [mkPlanStn(), mkPlanStn()];
+    function mkPlanStn(): Marker {
+      const d = document.createElement("div");
+      d.className = "map-plan-stn";
+      return new maplibregl.Marker({ element: d, anchor: "bottom" });
+    }
+    function setPlanStn(m: Marker, st: Station, label: string): void {
+      const el = m.getElement();
+      el.innerHTML = "";
+      const badge = document.createElement("span");
+      badge.className = "map-plan-stn__badge";
+      badge.textContent = "🚆";
+      const name = document.createElement("span");
+      name.className = "map-plan-stn__name";
+      name.textContent = `${st.name} · ${label}`;
+      el.append(badge, name);
+      m.setLngLat([st.lng, st.lat]).addTo(map);
+    }
 
     map.on("load", () => {
       loaded = true;
@@ -232,7 +254,7 @@ export function MapView() {
 
     /* -------- store → map sync (imperative, outside React's render) -------- */
 
-    let prev = { selectedId: null as string | null, clipKey: "", cursor: null as number | null, visKey: "", routesLen: 0, poiCount: -1, linkKey: "" };
+    let prev = { selectedId: null as string | null, clipKey: "", cursor: null as number | null, visKey: "", routesLen: 0, poiCount: -1, linkKey: "", planKey: "" };
 
     function padding() {
       const desktop = window.matchMedia("(min-width: 768px)").matches;
@@ -327,6 +349,21 @@ export function MapView() {
             : EMPTY
         );
         if (lk) map.setPaintProperty("link-line", "line-dasharray", lk.mode === "bike" ? [2, 1.2] : [0.5, 1.6]);
+      }
+
+      // day-plan station markers
+      const p = s.plan;
+      const planKey = p ? `${p.out.s.name}:${p.back.s.name}:${p.lo.toFixed(3)}:${p.hi.toFixed(3)}` : "";
+      if (planKey !== prev.planKey) {
+        prev.planKey = planKey;
+        if (p) {
+          setPlanStn(planMarkers[0], p.out.s, p.outAndBack ? "out & back from here" : "board here");
+          if (p.outAndBack) planMarkers[1].remove();
+          else setPlanStn(planMarkers[1], p.back.s, "home from here");
+        } else {
+          planMarkers[0].remove();
+          planMarkers[1].remove();
+        }
       }
 
       // clip handles
