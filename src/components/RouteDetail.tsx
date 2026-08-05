@@ -44,6 +44,7 @@ export function RouteDetail({ route }: { route: Route }) {
   const shortlisted = useStore((s) => s.shortlist.includes(route.id));
   const sample = useStore((s) => s.sample);
   const hasSurface = useStore((s) => s.hasSurface);
+  const showPois = useStore((s) => s.showPois);
   const attribution = useStore((s) => s.attribution);
   const pois = useStore((s) => s.pois);
   const link = useStore((s) => s.stationLink);
@@ -206,7 +207,10 @@ export function RouteDetail({ route }: { route: Route }) {
       </div>
 
       {pois.status === "ready" && (
-        <p className="poirow__hint">☕ {cafes} cafés and 🍺 {pubs} pubs shown on the map — tap a dot for details.</p>
+        <p className="poirow__hint">
+          ☕ {cafes} cafés and 🍺 {pubs} pubs{" "}
+          {showPois ? "shown on the map — tap a dot for details." : "found along the way — tap ☕ on the map to show them."}
+        </p>
       )}
       {pois.status === "error" && (
         <p className="poirow__err">Couldn't reach the cafés & pubs service — tap ☕ on the map to retry.</p>

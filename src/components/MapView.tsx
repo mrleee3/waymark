@@ -153,6 +153,16 @@ export function MapView() {
     const cursorMarker = mkDot("map-cursor-dot");
     const handles: [Marker, Marker] = [mkHandle(0), mkHandle(1)];
     let rafPending = false;
+    let prefetchTimer: number | null = null;
+    let prefetchFor: string | null = null;
+
+    function startPoiFetch(r: Route): void {
+      actions.setPois("loading", []);
+      fetchPois(r).then(
+        (items) => { if (getState().selectedId === r.id) actions.setPois("ready", items); },
+        () => actions.setPois("error", [])
+      );
+    }
 
     function mkDot(cls: string): Marker {
       const d = document.createElement("div");
@@ -293,19 +303,48 @@ export function MapView() {
 
       const popup = new maplibregl.Popup({ closeButton: false, offset: 10 });
 
+      // Station taps are two-stage: first tap names it, second tap (the dot
+      // again, or the button on the label) draws the bike link and zooms.
+      let armedStation: string | null = null;
+      popup.on("close", () => { armedStation = null; });
+
+      function stationStage2(st: Station): void {
+        if (getState().selectedId) {
+          void linkStation(st); // the link-ready sync fits the map to the link
+        } else {
+          map.flyTo({ center: [st.lng, st.lat], zoom: 13.5, duration: 700 });
+        }
+      }
+
       map.on("click", "stns-circle", (e) => {
         const f = e.features?.[0];
         if (!f) return;
         const props = f.properties as { name: string; lat: number; lng: number };
+        const st: Station = { name: String(props.name), lat: +props.lat, lng: +props.lng };
         const linked = getState().stationLink.link;
-        if (linked && linked.station.name === props.name) {
-          // second tap on the linked station clears the link
+        if (linked && linked.station.name === st.name) {
+          // tap on the already-linked station clears its link
           actions.setStationLink("idle", null);
           popup.remove();
+          armedStation = null;
           return;
         }
-        if (getState().selectedId) void linkStation({ name: props.name, lat: +props.lat, lng: +props.lng });
-        popup.setLngLat([+props.lng, +props.lat]).setText(String(props.name)).addTo(map);
+        if (armedStation === st.name) {
+          stationStage2(st);
+          return;
+        }
+        armedStation = st.name;
+        const box = document.createElement("div");
+        box.className = "stn-popup";
+        const title = document.createElement("strong");
+        title.textContent = st.name;
+        const go = document.createElement("button");
+        go.type = "button";
+        go.className = "stn-popup__go";
+        go.textContent = getState().selectedId ? "Bike link + zoom" : "Zoom in";
+        go.addEventListener("click", () => stationStage2(st));
+        box.append(title, go);
+        popup.setLngLat([st.lng, st.lat]).setDOMContent(box).addTo(map);
       });
 
       map.on("click", "pois-circle", (e) => {
@@ -459,14 +498,21 @@ export function MapView() {
       if (map.getLayer("pois-circle")) {
         map.setLayoutProperty("pois-circle", "visibility", s.showPois && s.selectedId ? "visible" : "none");
       }
-      if (s.showPois && s.selectedId && s.pois.status === "idle") {
+      if (s.selectedId && s.pois.status === "idle") {
         const r = s.routes.find((x) => x.id === s.selectedId);
         if (r) {
-          actions.setPois("loading", []);
-          fetchPois(r).then(
-            (items) => { if (getState().selectedId === r.id) actions.setPois("ready", items); },
-            () => actions.setPois("error", [])
-          );
+          if (s.showPois) {
+            startPoiFetch(r);
+          } else if (prefetchFor !== r.id) {
+            // warm the cache once they've settled on this route for a moment,
+            // so tapping ☕ later is instant even without the sidecar
+            prefetchFor = r.id;
+            if (prefetchTimer != null) clearTimeout(prefetchTimer);
+            prefetchTimer = window.setTimeout(() => {
+              const st = getState();
+              if (st.selectedId === r.id && st.pois.status === "idle") startPoiFetch(r);
+            }, 1200);
+          }
         }
       }
       if (s.pois.items.length !== prev.poiCount || force) {
@@ -547,6 +593,7 @@ export function MapView() {
 
     return () => {
       unsub();
+      if (prefetchTimer != null) clearTimeout(prefetchTimer);
       mapBus.onFly(null);
       mapBus.onLinkStation(null);
       mapBus.onFit(null);

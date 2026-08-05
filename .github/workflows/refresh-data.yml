@@ -1,7 +1,7 @@
-# Keeps network.data fresh: downloads the official NCN dataset (updated
-# Sundays), processes it, and commits the compact payload the deployed app
-# fetches at runtime. The app's index.html is never touched — upload new app
-# versions by hand whenever you like; data stays current regardless.
+# Keeps the runtime data sidecars fresh: downloads the official NCN dataset
+# (updated Sundays), processes it into network.data, then harvests cafés &
+# pubs along every route from Overpass into pois.json. The app fetches both
+# at runtime — no app rebuild needed for data updates.
 #
 # Run it manually once (Actions tab → Refresh route data → Run workflow) to
 # publish the first live payload. If DATA_URL ever 404s, replace it with the
@@ -13,6 +13,11 @@ on:
   schedule:
     - cron: "0 4 * * 1" # Mondays 04:00 UTC
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "tools/build-data.mjs"
+      - "tools/build-pois.mjs"
 
 permissions:
   contents: write
@@ -34,13 +39,17 @@ jobs:
         run: curl -fsSL "$DATA_URL" -o /tmp/ncn.geojson && ls -la /tmp/ncn.geojson
 
       - name: Process (real elevations, cached between runs)
-        run: node tools/build-data.mjs --src /tmp/ncn.geojson
+        run: node tools/build-data.mjs --src /tmp/ncn.geojson --routes-json /tmp/routes-plain.json
 
-      - name: Commit fresh network.data
+      - name: Harvest cafés & pubs along the network
+        run: node tools/build-pois.mjs --routes /tmp/routes-plain.json --out pois.json
+
+      - name: Commit fresh data sidecars
         run: |
           git config user.name "waymark-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add network.data src/data/network.ts tools/.ele-cache.json -f
+          git add network.data pois.json src/data/network.ts tools/.ele-cache.json -f
           git diff --cached --quiet && echo "No changes." && exit 0
           git commit -m "Data refresh $(date -u +%F)"
+          git pull --rebase origin main
           git push

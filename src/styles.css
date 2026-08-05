@@ -943,3 +943,16 @@ a.plancard__time:hover { text-decoration: underline; }
   border: 2.5px solid var(--tf);
   pointer-events: auto; cursor: grab;
 }
+
+/* ------------------------------ station popup ------------------------------ */
+
+.stn-popup { display: grid; gap: 7px; font: 600 13px/1.3 var(--font-ui); }
+.stn-popup__go {
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--tf);
+  color: #fff;
+  font: 700 12px var(--font-ui);
+  cursor: pointer;
+}

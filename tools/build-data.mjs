@@ -585,5 +585,10 @@ export const NETWORK_INFO = { sample: false, generated: "${payload.generated}", 
 `;
 writeFileSync(join(here, "..", "src", "data", "network.ts"), ts);
 writeFileSync(join(here, "..", "network.data"), gz.toString("base64"));
+const routesJsonPath = opt("routes-json", "");
+if (routesJsonPath) {
+  writeFileSync(routesJsonPath, JSON.stringify(routes.map((r) => ({ id: r.id, coords: r._coords }))));
+  console.log(`routes-json written: ${routesJsonPath}`);
+}
 console.log(`network.ts + network.data written: ${routes.length} routes — ${(json.length / 1048576).toFixed(1)} MB json → ${(gz.length / 1048576).toFixed(1)} MB gz.`);
 console.log("Publish network.data next to your deployed index.html and the app loads it at runtime — no rebuild needed.");
