@@ -42,14 +42,18 @@ jobs:
         run: node tools/build-data.mjs --src /tmp/ncn.geojson --routes-json /tmp/routes-plain.json
 
       - name: Harvest cafés & pubs along the network
-        run: node tools/build-pois.mjs --routes /tmp/routes-plain.json --out pois.json
+        run: |
+          ls -la /tmp/routes-plain.json || echo "routes-plain.json MISSING"
+          node tools/build-pois.mjs --routes /tmp/routes-plain.json --out pois.json 2>&1 | tee tools/.pois-run.log || true
 
       - name: Commit fresh data sidecars
         run: |
           git config user.name "waymark-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add network.data src/data/network.ts tools/.ele-cache.json tools/.pois-report.json -f
-          [ -f pois.json ] && git add pois.json -f
+          git add network.data src/data/network.ts -f
+          for f in tools/.ele-cache.json tools/.pois-report.json tools/.pois-run.log pois.json; do
+            if [ -f "$f" ]; then git add "$f" -f; fi
+          done
           git diff --cached --quiet && echo "No changes." && exit 0
           git commit -m "Data refresh $(date -u +%F)"
           git pull --rebase origin main

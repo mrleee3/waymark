@@ -152,7 +152,9 @@ function nearAnyRoute(grid, lng, lat) {
 
 /* --------------------------------- main --------------------------------- */
 
+console.log(`build-pois starting: node ${process.version}, routes=${ROUTES_PATH}, out=${OUT_PATH}`);
 const routes = JSON.parse(readFileSync(ROUTES_PATH, "utf8"));
+console.log(`routes loaded: ${routes.length}`);
 const grid = buildGrid(routes);
 const report = [];
 const { elements, complete } = await harvest(report);
