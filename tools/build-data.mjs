@@ -500,6 +500,10 @@ for (const [ref, entry] of [...byRef.entries()].sort((a, b) => a[0].localeCompar
 }
 console.log(`${routes.length} routes from ${byRef.size} numbered refs (join-gap ${JOIN_GAP} m, min ${MIN_LEN / 1000} km — tune with --join-gap / --min-length).`);
 
+// Plain route geometry for downstream tools (build-pois) — captured here
+// because the loop below encodes _coords into poly and deletes it.
+const plainRoutes = routes.map((r) => ({ id: r.id, coords: r._coords }));
+
 for (const r of routes) {
   // sample elevation at ~every 4th vertex to keep API volume sane, then expand
   const sampleIdx = [];
@@ -587,7 +591,7 @@ writeFileSync(join(here, "..", "src", "data", "network.ts"), ts);
 writeFileSync(join(here, "..", "network.data"), gz.toString("base64"));
 const routesJsonPath = opt("routes-json", "");
 if (routesJsonPath) {
-  writeFileSync(routesJsonPath, JSON.stringify(routes.map((r) => ({ id: r.id, coords: r._coords }))));
+  writeFileSync(routesJsonPath, JSON.stringify(plainRoutes));
   console.log(`routes-json written: ${routesJsonPath}`);
 }
 console.log(`network.ts + network.data written: ${routes.length} routes — ${(json.length / 1048576).toFixed(1)} MB json → ${(gz.length / 1048576).toFixed(1)} MB gz.`);
