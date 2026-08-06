@@ -15,7 +15,10 @@ export function watchForUpdates(onUpdate: (id: string) => void): () => void {
 
   async function check(): Promise<void> {
     try {
-      const res = await fetch("version.json", { cache: "no-cache" });
+      // Unique query per probe: GitHub Pages' CDN keys its edge cache on the
+      // full URL, so this always reaches a fresh copy instead of waiting out
+      // the ~10-minute edge TTL.
+      const res = await fetch(`version.json?t=${Date.now()}`, { cache: "no-store" });
       if (!res.ok) return;
       const v = (await res.json()) as { id?: string };
       if (!stopped && !announced && v.id && v.id !== BUILD_ID) {
