@@ -5,6 +5,9 @@ import { viteSingleFile } from "vite-plugin-singlefile";
 // Everything — JS, CSS, data payload — is inlined into dist/index.html.
 // The only runtime network dependency is the basemap tile service.
 export default defineConfig({
+  define: {
+    __BUILD_ID__: JSON.stringify(process.env.BUILD_ID ?? `dev-${Date.now().toString(36)}`),
+  },
   plugins: [react(), viteSingleFile()],
   build: {
     rollupOptions: { input: "app.html" },

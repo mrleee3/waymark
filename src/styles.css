@@ -979,3 +979,36 @@ a.plancard__time:hover { text-decoration: underline; }
 .stn-popup { cursor: pointer; }
 .stn-popup::after { content: " ›"; color: var(--tf); font-weight: 800; }
 .poi-popup__maps { display: inline-block; margin-top: 3px; font-weight: 700; }
+
+/* ------------------------------ update banner ------------------------------ */
+
+.updatebar {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px 9px 16px;
+  background: var(--waymark);
+  color: #fff;
+  border-radius: 999px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.3);
+  font: 600 13px var(--font-ui);
+  white-space: nowrap;
+}
+.updatebar button {
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--waymark);
+  font: 700 12.5px var(--font-ui);
+  cursor: pointer;
+}
+
+/* popups sit on white regardless of app theme */
+.poi-popup, .stn-popup { color: #1d1d1f; }
+.poi-popup a { color: #1d4f91; }

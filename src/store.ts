@@ -41,6 +41,8 @@ export interface State {
   showPois: boolean;
   /** ride the selected route the other way round */
   reversed: boolean;
+  /** a newer deployed build's id, when one is detected */
+  updateId: string | null;
   locPromptDismissed: boolean;
   /** Cafés & pubs for the selected route. */
   pois: { status: "idle" | "loading" | "ready" | "error"; items: Poi[] };
@@ -111,6 +113,7 @@ let state: State = {
   showStations: true,
   showPois: false,
   reversed: false,
+  updateId: null,
   locPromptDismissed: safeGet(LS.locPrompt) === "1",
   pois: { status: "idle", items: [] },
   stationLink: { status: "idle", link: null },
@@ -257,6 +260,9 @@ export const actions = {
   },
   setStationLink(status: State["stationLink"]["status"], link: StationLink | null = state.stationLink.link) {
     set({ stationLink: { status, link } });
+  },
+  updateAvailable(id: string) {
+    set({ updateId: id });
   },
   toggleReverse() {
     set({

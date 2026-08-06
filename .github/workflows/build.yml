@@ -29,15 +29,18 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - name: Commit built index.html
+        env:
+          BUILD_ID: ${{ github.sha }}
+      - name: Commit built app + version stamp
         run: |
           cp dist/index.html index.html
-          if git diff --quiet -- index.html; then
+          printf '{"id":"%s","at":"%s"}\n' "$GITHUB_SHA" "$(date -u +%FT%TZ)" > version.json
+          git add index.html version.json
+          if git diff --cached --quiet; then
             echo "No change to built app."
             exit 0
           fi
           git config user.name "waymark-build"
           git config user.email "actions@users.noreply.github.com"
-          git add index.html
           git commit -m "Build app from source"
           git push

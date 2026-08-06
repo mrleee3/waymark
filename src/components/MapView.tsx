@@ -351,7 +351,11 @@ export function MapView() {
           const url = String(props.website);
           if (/^https?:\/\//.test(url)) html += `<br><a href="${esc(url)}" target="_blank" rel="noopener">Website</a>`;
         }
-        html += `<br><a class="poi-popup__maps" href="https://www.google.com/maps/search/?api=1&query=${(+props.lat).toFixed(6)}%2C${(+props.lng).toFixed(6)}" target="_blank" rel="noopener">Open in Google Maps ↗</a>`;
+        const generic = props.name === "Café" || props.name === "Pub";
+        const gmaps = generic
+          ? `https://www.google.com/maps/search/?api=1&query=${(+props.lat).toFixed(6)}%2C${(+props.lng).toFixed(6)}`
+          : `https://www.google.com/maps/search/${encodeURIComponent(String(props.name))}/@${(+props.lat).toFixed(6)},${(+props.lng).toFixed(6)},17z`;
+        html += `<br><a class="poi-popup__maps" href="${gmaps}" target="_blank" rel="noopener">Open in Google Maps ↗</a>`;
         popup.setLngLat([+props.lng, +props.lat]).setHTML(`<div class="poi-popup">${html}</div>`).addTo(map);
       });
 
