@@ -160,3 +160,22 @@ function lowerBound(arr: number[], v: number): number {
   }
   return lo;
 }
+
+/** A view of the route ridden the other way: geometry, elevation, surface
+ *  spans and the name's arrow all flipped. Same id, so caches still match. */
+export function reverseRoute(r: Route): Route {
+  const coords = [...r.coords].reverse();
+  const ele = [...r.ele].reverse();
+  const n = r.cum.length;
+  const total = r.cum[n - 1];
+  const cum = new Array<number>(n);
+  for (let i = 0; i < n; i++) cum[i] = total - r.cum[n - 1 - i];
+  const spans = r.surf.length ? r.surf : ([[0, 1]] as [number, number][]);
+  const segs = spans.map((sp, i) => ({ b: i + 1 < spans.length ? spans[i + 1][0] : 1, cls: sp[1] }));
+  const surf = segs.reverse().map((g) => [Number((1 - g.b).toFixed(6)), g.cls] as [number, number]);
+  const flip = (t: string) => (t.includes("→") ? t.split("→").map((x) => x.trim()).reverse().join(" → ") : t);
+  const span = r.span ? flip(r.span) : r.span;
+  const name =
+    r.span && span && r.name.includes(r.span) ? r.name.replace(r.span, span) : flip(r.name);
+  return { ...r, coords, ele, cum, surf, span, name, ascentM: ascent(ele) };
+}

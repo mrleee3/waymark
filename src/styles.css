@@ -956,3 +956,26 @@ a.plancard__time:hover { text-decoration: underline; }
   font: 700 12px var(--font-ui);
   cursor: pointer;
 }
+
+/* --------------------------- reverse + popup polish --------------------------- */
+
+.detail__reverse {
+  margin-left: auto;
+  align-self: flex-start;
+  display: grid;
+  place-items: center;
+  width: 34px; height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-solid);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.detail__reverse[aria-pressed="true"] {
+  background: var(--tf);
+  border-color: var(--tf);
+  color: #fff;
+}
+.stn-popup { cursor: pointer; }
+.stn-popup::after { content: " ›"; color: var(--tf); font-weight: 800; }
+.poi-popup__maps { display: inline-block; margin-top: 3px; font-weight: 700; }

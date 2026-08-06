@@ -4,7 +4,7 @@ import type { GeoJSONSource, Map as MLMap, MapLayerMouseEvent, Marker } from "ma
 import "maplibre-gl/dist/maplibre-gl.css";
 import { COLORS, HOME_BOUNDS, MAP_STYLES } from "../config";
 import type { BasemapKind } from "../config";
-import { actions, getState, subscribe, visibleRoutes } from "../store";
+import { actions, getState, selectedRoute, subscribe, visibleRoutes } from "../store";
 import { mapBus } from "../lib/mapbus";
 import { distanceToRoute, nearestFraction, pointAt } from "../lib/geo";
 import { fetchStationLink } from "../lib/link";
@@ -176,7 +176,7 @@ export function MapView() {
       const m = new maplibregl.Marker({ element: d, draggable: true });
       m.on("drag", () => {
         const s = getState();
-        const r = s.routes.find((x) => x.id === s.selectedId);
+        const r = selectedRoute(s);
         if (!r || !s.clip) return;
         const ll = m.getLngLat();
         const t = nearestFraction(r, [ll.lng, ll.lat]);
@@ -336,14 +336,8 @@ export function MapView() {
         armedStation = st.name;
         const box = document.createElement("div");
         box.className = "stn-popup";
-        const title = document.createElement("strong");
-        title.textContent = st.name;
-        const go = document.createElement("button");
-        go.type = "button";
-        go.className = "stn-popup__go";
-        go.textContent = getState().selectedId ? "Bike link + zoom" : "Zoom in";
-        go.addEventListener("click", () => stationStage2(st));
-        box.append(title, go);
+        box.textContent = st.name;
+        box.addEventListener("click", () => stationStage2(st));
         popup.setLngLat([st.lng, st.lat]).setDOMContent(box).addTo(map);
       });
 
@@ -357,6 +351,7 @@ export function MapView() {
           const url = String(props.website);
           if (/^https?:\/\//.test(url)) html += `<br><a href="${esc(url)}" target="_blank" rel="noopener">Website</a>`;
         }
+        html += `<br><a class="poi-popup__maps" href="https://www.google.com/maps/search/?api=1&query=${(+props.lat).toFixed(6)}%2C${(+props.lng).toFixed(6)}" target="_blank" rel="noopener">Open in Google Maps ↗</a>`;
         popup.setLngLat([+props.lng, +props.lat]).setHTML(`<div class="poi-popup">${html}</div>`).addTo(map);
       });
 
@@ -386,7 +381,7 @@ export function MapView() {
       if (!s.selectedId) return;
       const rid = e.features?.[0]?.properties?.rid as string | undefined;
       if (rid !== s.selectedId) return;
-      const r = s.routes.find((x) => x.id === rid);
+      const r = selectedRoute(s);
       if (!r || rafPending) return;
       rafPending = true;
       requestAnimationFrame(() => {
@@ -397,7 +392,7 @@ export function MapView() {
 
     async function linkStation(st: Station): Promise<void> {
       const s = getState();
-      const r = s.routes.find((x) => x.id === s.selectedId);
+      const r = selectedRoute(s);
       if (!r) return;
       actions.setStationLink("loading", null);
       const link = await fetchStationLink(r, st);
@@ -455,7 +450,7 @@ export function MapView() {
 
       const selChanged = s.selectedId !== prev.selectedId;
       if (selChanged) {
-        const r = s.routes.find((x) => x.id === s.selectedId);
+        const r = selectedRoute(s);
         if (r) {
           map.fitBounds([[r.bbox[0], r.bbox[1]], [r.bbox[2], r.bbox[3]]], {
             padding: padding(),
@@ -469,7 +464,7 @@ export function MapView() {
       const stnKey = `${s.selectedId ?? "all"}:${s.stations.length}`;
       if ((selChanged || force || stnKey !== prev.stnKey) && map.getSource("stns")) {
         prev.stnKey = stnKey;
-        const r = s.routes.find((x) => x.id === s.selectedId);
+        const r = selectedRoute(s);
         const src = map.getSource("stns") as GeoJSONSource;
         const feat = (st: Station): GeoJSON.Feature => ({
           type: "Feature",
@@ -499,7 +494,7 @@ export function MapView() {
         map.setLayoutProperty("pois-circle", "visibility", s.showPois && s.selectedId ? "visible" : "none");
       }
       if (s.selectedId && s.pois.status === "idle") {
-        const r = s.routes.find((x) => x.id === s.selectedId);
+        const r = selectedRoute(s);
         if (r) {
           if (s.showPois) {
             startPoiFetch(r);
@@ -564,7 +559,7 @@ export function MapView() {
       }
 
       // clip handles
-      const r = s.routes.find((x) => x.id === s.selectedId);
+      const r = selectedRoute(s);
       const clipKey = s.clipping && s.clip && r ? `${r.id}:${s.clip[0].toFixed(3)}:${s.clip[1].toFixed(3)}` : "";
       if (clipKey !== prev.clipKey) {
         prev.clipKey = clipKey;

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { actions, useStore } from "../store";
+import { actions, selectedRoute, useStore } from "../store";
 import type { SheetPos } from "../store";
 import { useMyLocation } from "../lib/locate";
 import { SearchBox } from "./SearchBox";
@@ -32,7 +32,7 @@ export function Panel() {
   const loaded = useStore((s) => s.loaded);
   const loadError = useStore((s) => s.loadError);
   const selectedId = useStore((s) => s.selectedId);
-  const route = useStore((s) => s.routes.find((r) => r.id === s.selectedId));
+  const route = useStore(selectedRoute);
   const planning = useStore((s) => s.planning);
   const sample = useStore((s) => s.sample);
   const noticeDismissed = useStore((s) => s.sampleNoticeDismissed);

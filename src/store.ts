@@ -7,6 +7,7 @@ import type { Poi } from "./lib/pois";
 import type { StationLink } from "./lib/link";
 import { DEFAULT_PLAN_PREFS } from "./lib/plan";
 import type { Budget, Plan, PlanPrefs } from "./lib/plan";
+import { reverseRoute } from "./lib/geo";
 
 export type Theme = "light" | "dark";
 export type SheetPos = "peek" | "half" | "full";
@@ -38,6 +39,8 @@ export interface State {
   /** map layer visibility (the 🚉 / ☕ buttons on the map) */
   showStations: boolean;
   showPois: boolean;
+  /** ride the selected route the other way round */
+  reversed: boolean;
   locPromptDismissed: boolean;
   /** Cafés & pubs for the selected route. */
   pois: { status: "idle" | "loading" | "ready" | "error"; items: Poi[] };
@@ -107,6 +110,7 @@ let state: State = {
   hasSurface: true,
   showStations: true,
   showPois: false,
+  reversed: false,
   locPromptDismissed: safeGet(LS.locPrompt) === "1",
   pois: { status: "idle", items: [] },
   stationLink: { status: "idle", link: null },
@@ -171,6 +175,7 @@ export const actions = {
         clip: opts.keepClip ? state.clip : null,
         clipping: opts.keepClip ? state.clipping : false,
         cursor: null,
+        reversed: false,
         sheet: id ? "half" : state.sheet,
         pois: { status: "idle", items: [] },
         stationLink: { status: "idle", link: null },
@@ -253,6 +258,14 @@ export const actions = {
   setStationLink(status: State["stationLink"]["status"], link: StationLink | null = state.stationLink.link) {
     set({ stationLink: { status, link } });
   },
+  toggleReverse() {
+    set({
+      reversed: !state.reversed,
+      plan: null,
+      cursor: null,
+      clip: state.clip ? [1 - state.clip[1], 1 - state.clip[0]] : null,
+    });
+  },
   toggleStations() {
     const hiding = state.showStations;
     set({ showStations: !state.showStations, ...(hiding ? { stationLink: { status: "idle" as const, link: null } } : {}) });
@@ -334,4 +347,14 @@ function applyHash(): void {
     }
     set({ selectedId: id, clip, clipping: clip != null });
   }
+}
+
+/* The selected route in its current riding direction. Memoised because the
+ * reversed view copies geometry; same object identity between renders. */
+let revMemo: { src: Route; route: Route } | null = null;
+export function selectedRoute(s: State): Route | undefined {
+  const r = s.routes.find((x) => x.id === s.selectedId);
+  if (!r || !s.reversed) return r;
+  if (!revMemo || revMemo.src !== r) revMemo = { src: r, route: reverseRoute(r) };
+  return revMemo.route;
 }

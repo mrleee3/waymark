@@ -45,6 +45,7 @@ export function RouteDetail({ route }: { route: Route }) {
   const sample = useStore((s) => s.sample);
   const hasSurface = useStore((s) => s.hasSurface);
   const showPois = useStore((s) => s.showPois);
+  const reversed = useStore((s) => s.reversed);
   const attribution = useStore((s) => s.attribution);
   const pois = useStore((s) => s.pois);
   const link = useStore((s) => s.stationLink);
@@ -142,6 +143,16 @@ export function RouteDetail({ route }: { route: Route }) {
             {route.circular ? "Loop" : "Point to point"}
           </p>
         </div>
+        <button
+          type="button"
+          className="detail__reverse"
+          aria-pressed={reversed}
+          aria-label="Reverse the route direction"
+          title="Reverse direction"
+          onClick={() => actions.toggleReverse()}
+        >
+          <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h11M12 4l3 3-3 3" /><path d="M16 13H5M8 10l-3 3 3 3" /></g></svg>
+        </button>
       </header>
 
       {route.notes && <p className="detail__notes">{route.notes}</p>}

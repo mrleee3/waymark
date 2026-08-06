@@ -41,6 +41,9 @@ jobs:
       - name: Process (real elevations, cached between runs)
         run: node tools/build-data.mjs --src /tmp/ncn.geojson --routes-json /tmp/routes-plain.json
 
+      - name: Keep the in-app embed as the small sample
+        run: git checkout -- src/data/network.ts
+
       - name: Harvest cafés & pubs along the network
         run: |
           ls -la /tmp/routes-plain.json || echo "routes-plain.json MISSING"
@@ -50,7 +53,7 @@ jobs:
         run: |
           git config user.name "waymark-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add network.data src/data/network.ts -f
+          git add network.data -f
           for f in tools/.ele-cache.json tools/.pois-report.json tools/.pois-run.log pois.json; do
             if [ -f "$f" ]; then git add "$f" -f; fi
           done
