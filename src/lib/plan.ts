@@ -27,9 +27,11 @@ export interface PlanPrefs {
   maxLegMin: number;
   /** how far to ride between station and route, km; 0 = default 3 km */
   maxLinkKm: number;
+  /** bias plans towards quieter, more rural sections */
+  feel: "any" | "rural";
 }
 
-export const DEFAULT_PLAN_PREFS: PlanPrefs = { shape: "any", kmMin: 0, kmMax: 0, maxLegMin: 0, maxLinkKm: 0 };
+export const DEFAULT_PLAN_PREFS: PlanPrefs = { shape: "any", kmMin: 0, kmMax: 0, maxLegMin: 0, maxLinkKm: 0, feel: "any" };
 
 export const BUDGET_MIN: Record<Budget, number> = { half: 270, full: 420, epic: 570 };
 export const BUDGET_LABEL: Record<Budget, string> = { half: "Half day", full: "Full day", epic: "All day" };
@@ -311,21 +313,59 @@ export function buildPlans(
   /* pick the three answers */
   const railSum = (p: Plan) => p.railOut.minutes + p.railBack.minutes;
 
-  const simplest = [...all].sort(
-    (a, b) =>
-      railSum(a) + (a.outAndBack ? 0 : 18) + a.linkKm * 3 - a.rideKm * 0.15 -
-      (railSum(b) + (b.outAndBack ? 0 : 18) + b.linkKm * 3 - b.rideKm * 0.15)
-  )[0];
+  // Station density along the ridden ground is a decent urban/rural proxy in
+  // GB: inner cities bristle with stations, deep countryside doesn't.
+  const nearAll = prefs.feel === "rural" ? stationsAlong(route, stations, 2500) : [];
+  const densityMemo = new Map<Plan, number>();
+  const densityOf = (p: Plan): number => {
+    let d = densityMemo.get(p);
+    if (d == null) {
+      const spanKm = Math.max(1, p.outAndBack ? p.rideKm / 2 : p.rideKm);
+      const n = nearAll.filter((c) => c.frac >= p.lo - 0.005 && c.frac <= p.hi + 0.005).length;
+      d = n / spanKm;
+      densityMemo.set(p, d);
+    }
+    return d;
+  };
+  // Densest 8 km window of the span — a long ride can't average its urban
+  // tail away. Above ~0.7 stations/km it's unmistakably built-up.
+  const windowMemo = new Map<Plan, number>();
+  const urbanWindowOf = (p: Plan): number => {
+    let w = windowMemo.get(p);
+    if (w == null) {
+      const ks = nearAll
+        .filter((c) => c.frac >= p.lo - 0.005 && c.frac <= p.hi + 0.005)
+        .map((c) => (c.frac - p.lo) * route.lengthKm)
+        .sort((a, b) => a - b);
+      let max = 0;
+      for (let i = 0, j = 0; i < ks.length; i++) {
+        while (ks[i] - ks[j] > 8) j++;
+        max = Math.max(max, i - j + 1);
+      }
+      w = max / 8;
+      windowMemo.set(p, w);
+    }
+    return w;
+  };
+
+  const ruralPool = prefs.feel === "rural" ? all.filter((p) => urbanWindowOf(p) <= 0.7) : all;
+  const pool = ruralPool.length ? ruralPool : all;
+
+  const simpleCost = (p: Plan) =>
+    railSum(p) + (p.outAndBack ? 0 : 18) + p.linkKm * 3 - p.rideKm * 0.15 +
+    (prefs.feel === "rural" ? densityOf(p) * 22 : 0);
+  const simplest = [...pool].sort((a, b) => simpleCost(a) - simpleCost(b))[0];
 
   const idealRide = Math.max(90, (budgetMin - railSum(simplest)) * 0.62);
-  const best = [...all].sort((a, b) => {
+  const best = [...pool].sort((a, b) => {
     const q = (p: Plan) =>
       p.tfPct - (Math.abs(p.ride.likely - idealRide) / idealRide) * 45 - p.linkKm * 2.5 -
-      (prefs.shape === "any" && p.outAndBack ? 4 : 0);
+      (prefs.shape === "any" && p.outAndBack ? 4 : 0) +
+      (prefs.feel === "rural" ? p.tfPct * 0.25 - densityOf(p) * 30 : 0);
     return q(b) - q(a);
   })[0];
 
-  const most = [...all].sort((a, b) => b.rideKm - a.rideKm || railSum(a) - railSum(b))[0];
+  const most = [...pool].sort((a, b) => b.rideKm - a.rideKm || railSum(a) - railSum(b))[0];
 
   simplest.kinds.push("simplest");
   simplest.why = simplest.outAndBack && simplest.railOut.minutes === 0

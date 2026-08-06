@@ -50,6 +50,8 @@ show("Hastings → London", "Tonbridge", "full", { shape: "ab" });
 show("Hastings → London", "Tonbridge", "full", { shape: "ab", kmMin: 30, kmMax: 55 });
 show("Hastings → London", "Tonbridge", "full", { maxLegMin: 45 });
 show("Cardiff → London", "Bristol Temple Meads", "full", { shape: "ab", kmMax: 60 });
+show("Hastings → London", "Bromley South", "full", { maxLegMin: 45 });
+show("Hastings → London", "Bromley South", "full", { maxLegMin: 45, feel: "rural" });
 
 // reversed-plan sanity: any plan riding hi -> lo must still report lo <= hi
 import("../src/lib/plan").then(() => {});

@@ -242,7 +242,8 @@ export function Planner({ route }: { route: Route }) {
 
   const needsHome = !home || changingHome;
   const prefsActive =
-    prefs.shape !== "any" || prefs.kmMin > 0 || prefs.kmMax > 0 || prefs.maxLegMin > 0 || prefs.maxLinkKm > 0;
+    prefs.shape !== "any" || prefs.kmMin > 0 || prefs.kmMax > 0 || prefs.maxLegMin > 0 ||
+    prefs.maxLinkKm > 0 || prefs.feel !== "any";
 
   return (
     <div className="detail planner">
@@ -337,6 +338,25 @@ export function Planner({ route }: { route: Route }) {
                 </button>
               ))}
             </div>
+            <div className="planner__prefrow" role="group" aria-label="Ride feel">
+              <span className="planner__preflabel">Ride feel</span>
+              {(
+                [
+                  ["any", "No preference"],
+                  ["rural", "🌾 Prefer countryside"],
+                ] as ["any" | "rural", string][]
+              ).map(([v, label]) => (
+                <button
+                  key={v}
+                  type="button"
+                  className={`chip ${prefs.feel === v ? "chip--on" : ""}`}
+                  onClick={() => actions.setPlanPrefs({ feel: v })}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
             <div className="planner__prefrow" role="group" aria-label="Longest ride between station and route">
               <span className="planner__preflabel">Station link</span>
               {(

@@ -77,6 +77,7 @@ function loadPlanPrefs(): PlanPrefs {
       kmMax: typeof p.kmMax === "number" && p.kmMax > 0 ? p.kmMax : 0,
       maxLegMin: typeof p.maxLegMin === "number" && p.maxLegMin > 0 ? p.maxLegMin : 0,
       maxLinkKm: typeof p.maxLinkKm === "number" && p.maxLinkKm > 0 ? p.maxLinkKm : 0,
+      feel: p.feel === "rural" ? "rural" : "any",
     };
   } catch {
     return { ...DEFAULT_PLAN_PREFS };
