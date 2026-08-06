@@ -5,6 +5,8 @@ export interface Poi {
   kind: "cafe" | "pub";
   hours?: string;
   website?: string;
+  /** postcode or village/town from OSM addr tags — anchors external searches */
+  loc?: string;
   name: string;
   lng: number;
   lat: number;
@@ -20,7 +22,7 @@ const cache = new Map<string, Poi[]>();
  * Overpass live for just the selected route's corridor.
  */
 
-type SidecarRow = [number, number, number, string, string, string];
+type SidecarRow = [number, number, number, string, string, string, number?];
 let sidecar: { status: "unknown" | "missing" } | { status: "ready"; pois: Poi[] } = { status: "unknown" };
 let sidecarLoad: Promise<void> | null = null;
 
@@ -33,15 +35,17 @@ function loadSidecar(): Promise<void> {
         const res = await fetch("pois.json", { cache: "no-cache", signal: ctrl.signal });
         clearTimeout(t);
         if (!res.ok) throw new Error(String(res.status));
-        const data = (await res.json()) as { pois: SidecarRow[] };
+        const data = (await res.json()) as { locs?: string[]; pois: SidecarRow[] };
+        const locs = data.locs ?? [];
         sidecar = {
           status: "ready",
-          pois: data.pois.map(([lng, lat, k, name, hours, website]) => ({
+          pois: data.pois.map(([lng, lat, k, name, hours, website, li]) => ({
             lng, lat,
             kind: k === 1 ? "pub" : "cafe",
             name,
             hours: hours || undefined,
             website: website || undefined,
+            loc: li ? locs[li - 1] : undefined,
           })),
         };
       } catch {
@@ -110,6 +114,9 @@ nwr["amenity"="pub"](around:350,${line});
       name: el.tags?.name ?? (amenity === "cafe" ? "Café" : "Pub"),
       hours: el.tags?.opening_hours,
       website: el.tags?.website ?? el.tags?.["contact:website"],
+      loc:
+        el.tags?.["addr:postcode"] ?? el.tags?.["addr:village"] ??
+        el.tags?.["addr:town"] ?? el.tags?.["addr:city"] ?? el.tags?.["addr:suburb"],
       lng: lon,
       lat,
     });

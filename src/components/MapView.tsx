@@ -344,19 +344,20 @@ export function MapView() {
       map.on("click", "pois-circle", (e) => {
         const f = e.features?.[0];
         if (!f) return;
-        const props = f.properties as { name: string; kind: string; lat: number; lng: number; hours?: string; website?: string };
+        const props = f.properties as { name: string; kind: string; lat: number; lng: number; hours?: string; website?: string; loc?: string };
         let html = `<strong>${esc(String(props.name))}</strong><br><span class="poi-popup__kind">${props.kind === "cafe" ? "Café" : "Pub"}</span>`;
         if (props.hours) html += `<br><span class="poi-popup__hours">${esc(String(props.hours))}</span>`;
         if (props.website) {
           const url = String(props.website);
           if (/^https?:\/\//.test(url)) html += `<br><a href="${esc(url)}" target="_blank" rel="noopener">Website</a>`;
         }
-        // Location must live inside the query itself — the app ignores
-        // viewport hints. "Name lat,lng" geocodes as this business here.
+        // Search the way a human would: "name, postcode/village". Coordinates
+        // in the query are treated as literal text, so only use them as a
+        // bare pin when no locality is known.
         const generic = props.name === "Café" || props.name === "Pub";
-        const q = generic
-          ? `${(+props.lat).toFixed(5)},${(+props.lng).toFixed(5)}`
-          : `${String(props.name)} ${(+props.lat).toFixed(5)},${(+props.lng).toFixed(5)}`;
+        const q = !generic && props.loc
+          ? `${String(props.name)}, ${String(props.loc)}`
+          : `${(+props.lat).toFixed(5)},${(+props.lng).toFixed(5)}`;
         const gmaps = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
         html += `<br><a class="poi-popup__maps" href="${gmaps}" target="_blank" rel="noopener">Open in Google Maps ↗</a>`;
         popup.setLngLat([+props.lng, +props.lat]).setHTML(`<div class="poi-popup">${html}</div>`).addTo(map);
@@ -523,7 +524,7 @@ export function MapView() {
           type: "FeatureCollection",
           features: s.pois.items.map((p) => ({
             type: "Feature",
-            properties: { name: p.name, kind: p.kind, lat: p.lat, lng: p.lng, hours: p.hours, website: p.website },
+            properties: { name: p.name, kind: p.kind, lat: p.lat, lng: p.lng, hours: p.hours, website: p.website, loc: p.loc },
             geometry: { type: "Point", coordinates: [p.lng, p.lat] },
           })),
         });

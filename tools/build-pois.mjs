@@ -162,6 +162,10 @@ console.log(`harvested ${elements.length} raw elements (complete: ${complete})`)
 
 const seen = new Set();
 const clip = (s, n) => (s && s.length > n ? s.slice(0, n) : s || "");
+const locOf = (t = {}) =>
+  t["addr:postcode"] ?? t["addr:village"] ?? t["addr:town"] ?? t["addr:city"] ?? t["addr:suburb"] ?? "";
+const locs = [];
+const locIdx = new Map();
 const rows = [];
 for (const el of elements) {
   const id = `${el.type}/${el.id}`;
@@ -176,7 +180,17 @@ for (const el of elements) {
   const hours = clip(el.tags?.opening_hours, 64);
   let website = el.tags?.website ?? el.tags?.["contact:website"] ?? "";
   if (!/^https?:\/\//.test(website) || website.length > 80) website = "";
-  rows.push([+lng.toFixed(5), +lat.toFixed(5), kind, name, hours, website]);
+  const loc = clip(locOf(el.tags), 28);
+  let li = 0;
+  if (loc) {
+    li = locIdx.get(loc) ?? 0;
+    if (!li) {
+      locs.push(loc);
+      li = locs.length;
+      locIdx.set(loc, li);
+    }
+  }
+  rows.push([+lng.toFixed(5), +lat.toFixed(5), kind, name, hours, website, li]);
 }
 
 // The report is committed either way — it's our log channel from CI.
@@ -190,7 +204,7 @@ if (!complete) {
   console.error("harvest incomplete — pois.json NOT written this run (see tools/.pois-report.json).");
   process.exit(0);
 }
-const out = { gen: new Date().toISOString().slice(0, 10), count: rows.length, pois: rows };
+const out = { gen: new Date().toISOString().slice(0, 10), count: rows.length, locs, pois: rows };
 const json = JSON.stringify(out);
 writeFileSync(OUT_PATH, json);
 console.log(`pois.json written: ${rows.length} kept of ${seen.size} — ${(json.length / 1024).toFixed(0)} KB raw.`);
