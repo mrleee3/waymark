@@ -1,48 +1,48 @@
 {
- "when": "2026-08-31T10:47:56.072Z",
+ "when": "2026-09-07T09:21:55.661Z",
  "complete": false,
- "kept": 16279,
- "raw": 58698,
+ "kept": 22554,
+ "raw": 83149,
  "bands": [
   {
    "band": "49.800-50.733",
    "ok": true,
-   "count": 3543
+   "count": 3496
   },
   {
    "band": "50.733-51.667",
-   "ok": false,
-   "error": "HTTP 502 from overpass.private.coffee"
+   "ok": true,
+   "count": 25978
   },
   {
    "band": "51.667-52.600",
    "ok": true,
-   "count": 15365
+   "count": 15316
   },
   {
    "band": "52.600-53.533",
    "ok": true,
-   "count": 17989
+   "count": 17803
   },
   {
    "band": "53.533-54.467",
    "ok": true,
-   "count": 10646
+   "count": 10577
   },
   {
    "band": "54.467-55.400",
    "ok": true,
-   "count": 5103
+   "count": 5100
   },
   {
    "band": "55.400-56.333",
    "ok": true,
-   "count": 4200
+   "count": 4203
   },
   {
    "band": "56.333-57.267",
-   "ok": true,
-   "count": 1170
+   "ok": false,
+   "error": "HTTP 504 from overpass.private.coffee"
   },
   {
    "band": "57.267-58.200",
@@ -62,7 +62,7 @@
   {
    "band": "60.067-61.000",
    "ok": true,
-   "count": 32
+   "count": 27
   }
  ]
 }
