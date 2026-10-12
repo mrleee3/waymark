@@ -1,58 +1,58 @@
 {
- "when": "2026-10-05T12:29:05.062Z",
+ "when": "2026-10-12T12:46:47.888Z",
  "complete": false,
- "kept": 12656,
- "raw": 46230,
+ "kept": 18303,
+ "raw": 69086,
  "bands": [
   {
    "band": "49.800-50.733",
    "ok": true,
-   "count": 3499
+   "count": 3553
   },
   {
    "band": "50.733-51.667",
    "ok": true,
-   "count": 25985
+   "count": 26006
   },
   {
    "band": "51.667-52.600",
-   "ok": false,
-   "error": "HTTP 502 from overpass.private.coffee"
+   "ok": true,
+   "count": 15410
   },
   {
    "band": "52.600-53.533",
-   "ok": false,
-   "error": "HTTP 504 from overpass.private.coffee"
+   "ok": true,
+   "count": 18065
   },
   {
    "band": "53.533-54.467",
-   "ok": true,
-   "count": 10675
-  },
-  {
-   "band": "54.467-55.400",
    "ok": false,
    "error": "This operation was aborted"
   },
   {
+   "band": "54.467-55.400",
+   "ok": false,
+   "error": "HTTP 504 from overpass.private.coffee"
+  },
+  {
    "band": "55.400-56.333",
    "ok": true,
-   "count": 4216
+   "count": 4224
   },
   {
    "band": "56.333-57.267",
    "ok": true,
-   "count": 1170
+   "count": 1156
   },
   {
    "band": "57.267-58.200",
    "ok": true,
-   "count": 537
+   "count": 529
   },
   {
    "band": "58.200-59.133",
    "ok": true,
-   "count": 106
+   "count": 105
   },
   {
    "band": "59.133-60.067",
@@ -62,7 +62,7 @@
   {
    "band": "60.067-61.000",
    "ok": true,
-   "count": 32
+   "count": 28
   }
  ]
 }
