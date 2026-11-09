@@ -1,58 +1,58 @@
 {
- "when": "2026-11-02T13:23:02.894Z",
+ "when": "2026-11-09T13:59:20.262Z",
  "complete": false,
- "kept": 22910,
- "raw": 84321,
+ "kept": 20269,
+ "raw": 73930,
  "bands": [
   {
    "band": "49.800-50.733",
    "ok": true,
-   "count": 3564
+   "count": 3567
   },
   {
    "band": "50.733-51.667",
    "ok": true,
-   "count": 26031
+   "count": 25819
   },
   {
    "band": "51.667-52.600",
    "ok": true,
-   "count": 15279
+   "count": 15444
   },
   {
    "band": "52.600-53.533",
    "ok": true,
-   "count": 18110
+   "count": 17884
   },
   {
    "band": "53.533-54.467",
-   "ok": true,
-   "count": 10698
-  },
-  {
-   "band": "54.467-55.400",
-   "ok": true,
-   "count": 5092
-  },
-  {
-   "band": "55.400-56.333",
-   "ok": true,
-   "count": 4227
-  },
-  {
-   "band": "56.333-57.267",
-   "ok": true,
-   "count": 1174
-  },
-  {
-   "band": "57.267-58.200",
    "ok": false,
    "error": "This operation was aborted"
   },
   {
+   "band": "54.467-55.400",
+   "ok": true,
+   "count": 5130
+  },
+  {
+   "band": "55.400-56.333",
+   "ok": true,
+   "count": 4229
+  },
+  {
+   "band": "56.333-57.267",
+   "ok": true,
+   "count": 1175
+  },
+  {
+   "band": "57.267-58.200",
+   "ok": true,
+   "count": 536
+  },
+  {
    "band": "58.200-59.133",
    "ok": true,
-   "count": 106
+   "count": 105
   },
   {
    "band": "59.133-60.067",
